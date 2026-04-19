@@ -81,25 +81,10 @@ trap 'cd /; rm -rf "$WORK_DIR" 2>/dev/null; true' EXIT
 cd "$WORK_DIR"
 
 # ════════════════════════════════════════════════════════════════════════════
-#  PHASE 2 — BROWSER LOADING PAGE + MINIGAME
+#  PHASE 2 — LOADING PAGE + SNAKE GAME ON PORT 8188
 # ════════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase 2: Deploying Loading UI ━━━"
+echo -e "\n━━━ Phase 2: Deploying Loading UI on :8188 ━━━"
 echo "[PROGRESS: 8]"
-
-_WEB_DIR=""
-for _candidate in \
-    "$COMFY_DIR/web/extensions/ofmpath" \
-    "/venv/lib/python3.12/site-packages/comfyui_frontend_package/web/extensions/ofmpath" \
-    "/venv/lib/python3.11/site-packages/comfyui_frontend_package/web/extensions/ofmpath" \
-    "/venv/lib/python3.10/site-packages/comfyui_frontend_package/web/extensions/ofmpath"; do
-    _parent=$(dirname "$_candidate")
-    if [ -d "$_parent" ]; then
-        mkdir -p "$_candidate"
-        _WEB_DIR="$_candidate"
-        break
-    fi
-done
-[ -z "$_WEB_DIR" ] && mkdir -p "$COMFY_DIR/web/extensions/ofmpath" && _WEB_DIR="$COMFY_DIR/web/extensions/ofmpath"
 
 # ── Progress state file ──
 _PROGRESS_FILE="/tmp/ofmpath_progress.json"
@@ -111,231 +96,206 @@ _set_progress() {
     echo "[PROGRESS: ${pct}]"
 }
 
-# ── Inject loading page JS into ComfyUI ──
-cat > "$_WEB_DIR/ofmpath_loader.js" << 'JSEOF'
-(function () {
-  "use strict";
-  const PROGRESS_POLL_MS = 1200;
-
-  // ── Only show during setup (progress file present) ──
-  let overlay = null;
-  let gameInterval = null;
-
-  function buildOverlay() {
-    if (overlay) return;
-    overlay = document.createElement("div");
-    overlay.id = "ofmpath-loading-overlay";
-    overlay.style.cssText = [
-      "position:fixed","top:0","left:0","width:100vw","height:100vh",
-      "background:#0a0a0f","z-index:99999","display:flex","flex-direction:column",
-      "align-items:center","justify-content:center","font-family:'Courier New',monospace",
-      "color:#00ff88","overflow:hidden"
-    ].join(";");
-
-    // CRT scanline overlay
-    const crt = document.createElement("div");
-    crt.style.cssText = [
-      "position:absolute","top:0","left:0","width:100%","height:100%","pointer-events:none",
-      "background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0px,rgba(0,0,0,.18) 1px,transparent 1px,transparent 3px)",
-      "z-index:2"
-    ].join(";");
-    overlay.appendChild(crt);
-
-    // Content wrapper
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "position:relative;z-index:3;text-align:center;width:90%;max-width:700px";
-
-    wrap.innerHTML = `
-      <div style="font-size:11px;color:#00ff88;letter-spacing:4px;margin-bottom:6px;opacity:.6">OFM PATH 智慧通路</div>
-      <pre id="ofp-ascii" style="font-size:13px;line-height:1.3;color:#00ff88;text-shadow:0 0 8px #00ff88;margin:0 0 18px">
+# ── Standalone self-contained HTML (CRT/scanline + snake game) ──
+cat > /tmp/ofmpath_loading.html << 'HTMLEOF'
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OFM PATH — Setting up...</title>
+<style>
+  html,body{margin:0;padding:0;background:#0a0a0f;color:#00ff88;font-family:'Courier New',monospace;overflow:hidden;height:100%}
+  .crt{position:fixed;inset:0;pointer-events:none;z-index:2;
+       background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0,rgba(0,0,0,.18) 1px,transparent 1px,transparent 3px)}
+  .wrap{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        min-height:100vh;text-align:center;padding:20px;box-sizing:border-box}
+  .brand{font-size:11px;letter-spacing:4px;opacity:.6;margin-bottom:6px}
+  pre.ascii{font-size:13px;line-height:1.3;color:#00ff88;text-shadow:0 0 8px #00ff88;margin:0 0 18px;white-space:pre}
+  #phase{font-size:14px;color:#88ffcc;margin-bottom:14px;min-height:20px}
+  .bar{width:100%;max-width:700px;background:#111;border:1px solid #00ff8844;border-radius:3px;height:12px;
+       margin-bottom:24px;overflow:hidden}
+  .bar > i{display:block;height:100%;width:8%;background:linear-gradient(90deg,#00ff88,#00ccff);
+           transition:width .8s ease;box-shadow:0 0 10px #00ff88}
+  .hint{color:#555;font-size:11px;margin-bottom:18px}
+  .game{border:1px solid #00ff8833;padding:12px;background:#050510;border-radius:4px}
+  .game h3{color:#00ff88;font-size:10px;letter-spacing:2px;margin:0 0 8px;font-weight:normal}
+  #snake{background:#030308;display:block;margin:0 auto;image-rendering:pixelated}
+  .sub{color:#555;font-size:10px;margin-top:6px}
+  #log{margin-top:16px;font-size:10px;color:#334;max-height:60px;overflow:hidden;text-align:left;padding:0 10px;max-width:700px}
+</style>
+</head><body>
+<div class="crt"></div>
+<div class="wrap">
+  <div class="brand">OFM PATH 智慧通路</div>
+  <pre class="ascii">
  ██████╗ ███████╗███╗   ███╗    ██████╗  █████╗ ████████╗██╗  ██╗
 ██╔═══██╗██╔════╝████╗ ████║    ██╔══██╗██╔══██╗╚══██╔══╝██║  ██║
 ██║   ██║█████╗  ██╔████╔██║    ██████╔╝███████║   ██║   ███████║
 ██║   ██║██╔══╝  ██║╚██╔╝██║    ██╔═══╝ ██╔══██║   ██║   ██╔══██║
 ╚██████╔╝██║     ██║ ╚═╝ ██║    ██║     ██║  ██║   ██║   ██║  ██║
  ╚═════╝ ╚═╝     ╚═╝     ╚═╝    ╚═╝     ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝</pre>
+  <div id="phase">Initializing...</div>
+  <div class="bar"><i id="bar"></i></div>
+  <div class="hint">[ Setting up your workspace... This takes a few minutes. Play while you wait! ]</div>
+  <div class="game">
+    <h3>◈ SNAKE — use arrow keys ◈</h3>
+    <canvas id="snake" width="320" height="200"></canvas>
+    <div class="sub">Score: <span id="score">0</span> &nbsp;|&nbsp; <span id="status">Press any arrow key to start</span></div>
+  </div>
+  <div id="log"></div>
+</div>
 
-      <div id="ofp-phase" style="font-size:14px;color:#88ffcc;margin-bottom:14px;min-height:20px">Initializing...</div>
+<script>
+(function(){
+  "use strict";
+  const POLL_MS = 1200;
+  const canvas = document.getElementById("snake");
+  const ctx = canvas.getContext("2d");
+  const W=32,H=20,SZ=10;
+  let snake=[{x:16,y:10}],dir={x:0,y:0},nextDir={x:0,y:0};
+  let food=rndFood(),score=0,running=false,dead=false,flash=0;
+  let gameInt=null,finished=false;
 
-      <div style="width:100%;background:#111;border:1px solid #00ff8844;border-radius:3px;height:12px;margin-bottom:24px;overflow:hidden">
-        <div id="ofp-bar" style="height:100%;width:8%;background:linear-gradient(90deg,#00ff88,#00ccff);transition:width .8s ease;box-shadow:0 0 10px #00ff88"></div>
-      </div>
-
-      <div style="color:#555;font-size:11px;margin-bottom:18px">[ Setting up your workspace... This takes a few minutes. Play while you wait! ]</div>
-
-      <div style="border:1px solid #00ff8833;padding:12px;background:#050510;border-radius:4px">
-        <div style="color:#00ff88;font-size:10px;letter-spacing:2px;margin-bottom:8px">◈ SNAKE — use arrow keys ◈</div>
-        <canvas id="ofp-snake" width="320" height="200" style="background:#030308;display:block;margin:0 auto;image-rendering:pixelated"></canvas>
-        <div style="color:#555;font-size:10px;margin-top:6px">Score: <span id="ofp-score">0</span> &nbsp;|&nbsp; <span id="ofp-status">Press any arrow key to start</span></div>
-      </div>
-
-      <div id="ofp-log" style="margin-top:16px;font-size:10px;color:#334;max-height:60px;overflow:hidden;text-align:left;padding:0 10px"></div>
-    `;
-    overlay.appendChild(wrap);
-    document.body.appendChild(overlay);
-    startSnake();
-    pollProgress();
-  }
-
-  // ── Snake game ──────────────────────────────────────────────────────────
-  function startSnake() {
-    const canvas = document.getElementById("ofp-snake");
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const W = 32, H = 20, SZ = 10;
-    let snake = [{x:16,y:10}], dir = {x:0,y:0}, nextDir = {x:0,y:0};
-    let food = rndFood(), score = 0, running = false, dead = false;
-    let flashFrames = 0;
-
-    function rndFood() {
-      return {x: Math.floor(Math.random()*W), y: Math.floor(Math.random()*H)};
-    }
-    function draw() {
-      ctx.fillStyle = "#030308"; ctx.fillRect(0,0,canvas.width,canvas.height);
-      // grid dots
-      ctx.fillStyle = "#0f1a12";
-      for (let x=0;x<W;x++) for (let y=0;y<H;y++) ctx.fillRect(x*SZ+4,y*SZ+4,2,2);
-      // food
-      ctx.fillStyle = flashFrames>0 ? "#ffffff" : "#ff4466";
-      ctx.shadowColor = "#ff4466"; ctx.shadowBlur = 8;
-      ctx.fillRect(food.x*SZ+1,food.y*SZ+1,SZ-2,SZ-2);
-      ctx.shadowBlur = 0;
-      // snake
-      snake.forEach((seg,i) => {
-        const t = i/snake.length;
-        ctx.fillStyle = `hsl(${150-t*40},100%,${55-t*20}%)`;
-        ctx.shadowColor = i===0 ? "#00ff88" : "none"; ctx.shadowBlur = i===0 ? 6 : 0;
-        ctx.fillRect(seg.x*SZ+1,seg.y*SZ+1,SZ-2,SZ-2);
-      });
-      ctx.shadowBlur = 0;
-      if (dead) {
-        ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle = "#ff4466"; ctx.font = "bold 14px 'Courier New'";
-        ctx.textAlign = "center"; ctx.fillText("GAME OVER — press arrow to restart", canvas.width/2, canvas.height/2);
-      }
-      if (!running && !dead) {
-        ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle = "#00ff88"; ctx.font = "12px 'Courier New'";
-        ctx.textAlign = "center"; ctx.fillText("← ↑ ↓ → to start", canvas.width/2, canvas.height/2);
-      }
-      if (flashFrames>0) flashFrames--;
-    }
-    function step() {
-      if (!running) { draw(); return; }
-      dir = {...nextDir};
-      if (dir.x===0 && dir.y===0) { draw(); return; }
-      const head = {x: snake[0].x+dir.x, y: snake[0].y+dir.y};
-      if (head.x<0||head.x>=W||head.y<0||head.y>=H||snake.some(s=>s.x===head.x&&s.y===head.y)) {
-        dead = true; running = false; draw(); return;
-      }
-      snake.unshift(head);
-      if (head.x===food.x && head.y===food.y) {
-        score++; flashFrames=4; food=rndFood();
-        document.getElementById("ofp-score").textContent = score;
-      } else { snake.pop(); }
-      draw();
-    }
-    document.addEventListener("keydown", e => {
-      const map = {"ArrowUp":{x:0,y:-1},"ArrowDown":{x:0,y:1},"ArrowLeft":{x:-1,y:0},"ArrowRight":{x:1,y:0}};
-      if (!map[e.key]) return;
-      e.preventDefault();
-      const d = map[e.key];
-      if (d.x===-dir.x && d.y===-dir.y) return; // no 180
-      nextDir = d;
-      if (dead) { snake=[{x:16,y:10}]; dir={x:0,y:0}; nextDir=d; score=0; dead=false;
-        document.getElementById("ofp-score").textContent=0; }
-      if (!running) { running=true; document.getElementById("ofp-status").textContent=""; }
+  function rndFood(){ return {x:Math.floor(Math.random()*W),y:Math.floor(Math.random()*H)}; }
+  function draw(){
+    ctx.fillStyle="#030308";ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#0f1a12";
+    for(let x=0;x<W;x++)for(let y=0;y<H;y++)ctx.fillRect(x*SZ+4,y*SZ+4,2,2);
+    ctx.fillStyle=flash>0?"#ffffff":"#ff4466";ctx.shadowColor="#ff4466";ctx.shadowBlur=8;
+    ctx.fillRect(food.x*SZ+1,food.y*SZ+1,SZ-2,SZ-2);ctx.shadowBlur=0;
+    snake.forEach((seg,i)=>{
+      const t=i/snake.length;
+      ctx.fillStyle=`hsl(${150-t*40},100%,${55-t*20}%)`;
+      ctx.shadowColor=i===0?"#00ff88":"none";ctx.shadowBlur=i===0?6:0;
+      ctx.fillRect(seg.x*SZ+1,seg.y*SZ+1,SZ-2,SZ-2);
     });
-    if (gameInterval) clearInterval(gameInterval);
-    gameInterval = setInterval(step, 110);
+    ctx.shadowBlur=0;
+    if(dead){
+      ctx.fillStyle="rgba(0,0,0,.6)";ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle="#ff4466";ctx.font="bold 14px 'Courier New'";ctx.textAlign="center";
+      ctx.fillText("GAME OVER — arrow to restart",canvas.width/2,canvas.height/2);
+    }
+    if(!running&&!dead){
+      ctx.fillStyle="rgba(0,0,0,.4)";ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle="#00ff88";ctx.font="12px 'Courier New'";ctx.textAlign="center";
+      ctx.fillText("← ↑ ↓ → to start",canvas.width/2,canvas.height/2);
+    }
+    if(flash>0)flash--;
+  }
+  function step(){
+    if(!running){draw();return;}
+    dir={...nextDir};
+    if(dir.x===0&&dir.y===0){draw();return;}
+    const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+    if(head.x<0||head.x>=W||head.y<0||head.y>=H||snake.some(s=>s.x===head.x&&s.y===head.y)){
+      dead=true;running=false;draw();return;
+    }
+    snake.unshift(head);
+    if(head.x===food.x&&head.y===food.y){
+      score++;flash=4;food=rndFood();
+      document.getElementById("score").textContent=score;
+    } else { snake.pop(); }
     draw();
   }
+  document.addEventListener("keydown",e=>{
+    const m={"ArrowUp":{x:0,y:-1},"ArrowDown":{x:0,y:1},"ArrowLeft":{x:-1,y:0},"ArrowRight":{x:1,y:0}};
+    if(!m[e.key])return;
+    e.preventDefault();
+    const d=m[e.key];
+    if(d.x===-dir.x&&d.y===-dir.y)return;
+    nextDir=d;
+    if(dead){snake=[{x:16,y:10}];dir={x:0,y:0};nextDir=d;score=0;dead=false;
+             document.getElementById("score").textContent=0;}
+    if(!running){running=true;document.getElementById("status").textContent="";}
+  });
+  gameInt=setInterval(step,110);
+  draw();
 
-  // ── Progress polling ─────────────────────────────────────────────────────
-  function pollProgress() {
-    fetch("/ofmpath_progress", {cache:"no-store"})
-      .then(r => r.json())
-      .catch(() => null)
-      .then(data => {
-        if (!data) { setTimeout(pollProgress, PROGRESS_POLL_MS); return; }
-        const bar = document.getElementById("ofp-bar");
-        const phase = document.getElementById("ofp-phase");
-        const log = document.getElementById("ofp-log");
-        if (bar) bar.style.width = data.pct + "%";
-        if (phase) phase.textContent = data.phase || "";
-        if (log && data.log) {
-          const li = document.createElement("div");
-          li.textContent = "› " + data.log;
-          li.style.color = "#00ff4466";
-          log.prepend(li);
-          while (log.children.length > 6) log.removeChild(log.lastChild);
-        }
-        if (data.done) {
-          setTimeout(() => {
-            if (overlay) {
-              overlay.style.transition = "opacity 1.5s";
-              overlay.style.opacity = "0";
-              setTimeout(() => { if (overlay) overlay.remove(); overlay=null;
-                if (gameInterval) clearInterval(gameInterval); }, 1600);
-            }
-          }, 2500);
+  function poll(){
+    fetch("/ofmpath_progress",{cache:"no-store"})
+      .then(r=>r.json())
+      .catch(()=>null)
+      .then(data=>{
+        if(!data){setTimeout(poll,POLL_MS);return;}
+        document.getElementById("bar").style.width=data.pct+"%";
+        document.getElementById("phase").textContent=data.phase||"";
+        if(data.done && !finished){
+          finished=true;
+          document.getElementById("phase").textContent="✅ Ready! Launching ComfyUI in 10s...";
+          let c=10;
+          const tick=setInterval(()=>{
+            c--;
+            if(c<=0){clearInterval(tick);location.reload();}
+            else document.getElementById("phase").textContent=`✅ Ready! Launching ComfyUI in ${c}s...`;
+          },1000);
           return;
         }
-        setTimeout(pollProgress, PROGRESS_POLL_MS);
+        setTimeout(poll,POLL_MS);
       });
   }
-
-  // ── Wait for DOM ready ───────────────────────────────────────────────────
-  function init() {
-    // Only show if ComfyUI hasn't loaded a graph yet
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", init); return;
-    }
-    fetch("/ofmpath_progress", {cache:"no-store"})
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d && !d.done) buildOverlay(); })
-      .catch(() => {});
-  }
-  init();
+  poll();
 })();
-JSEOF
+</script>
+</body></html>
+HTMLEOF
 
-echo "[✓] Loading UI deployed → $_WEB_DIR"
+echo "[✓] Loading UI HTML written → /tmp/ofmpath_loading.html"
 
-# ── Tiny Python HTTP server to serve progress JSON to the browser ──
+# ── HTTP server on port 8188 ── serves HTML on any path + /ofmpath_progress JSON
 cat > /tmp/ofmpath_progress_server.py << 'PYEOF'
-import http.server, json, os, urllib.parse
+import http.server, socketserver, os, signal, sys
 
+HTML_FILE     = "/tmp/ofmpath_loading.html"
 PROGRESS_FILE = "/tmp/ofmpath_progress.json"
 
 class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
-        if "/ofmpath_progress" in self.path:
-            try:
-                data = open(PROGRESS_FILE).read()
-            except:
-                data = '{"pct":0,"phase":"Starting...","done":false}'
+        if self.path.startswith("/ofmpath_progress"):
+            try:    data = open(PROGRESS_FILE, "rb").read()
+            except: data = b'{"pct":0,"phase":"Starting...","done":false}'
             self.send_response(200)
             self.send_header("Content-Type","application/json")
+            self.send_header("Cache-Control","no-store")
             self.send_header("Access-Control-Allow-Origin","*")
             self.end_headers()
-            self.wfile.write(data.encode())
-        else:
-            self.send_response(404); self.end_headers()
+            self.wfile.write(data)
+            return
+        # Any other path → return the loading HTML
+        try:    html = open(HTML_FILE, "rb").read()
+        except: html = b"<h1>Loading...</h1>"
+        self.send_response(200)
+        self.send_header("Content-Type","text/html; charset=utf-8")
+        self.send_header("Cache-Control","no-store")
+        self.end_headers()
+        self.wfile.write(html)
+
+class ReusableTCPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
 
 if __name__ == "__main__":
-    server = http.server.HTTPServer(("0.0.0.0", 8190), H)
-    server.serve_forever()
+    # bind to 8188 so Vast.ai's published port shows our UI until ComfyUI takes over
+    try:
+        srv = ReusableTCPServer(("0.0.0.0", 8188), H)
+    except OSError as e:
+        print(f"[!] Could not bind :8188 ({e}); falling back to :8190", flush=True)
+        srv = ReusableTCPServer(("0.0.0.0", 8190), H)
+    def stop(*_):
+        try: srv.shutdown()
+        except: pass
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT,  stop)
+    srv.serve_forever()
 PYEOF
 
 python3 /tmp/ofmpath_progress_server.py &
 _PROGRESS_PID=$!
-trap 'kill $_PROGRESS_PID 2>/dev/null; cd /; rm -rf "$WORK_DIR" 2>/dev/null; true' EXIT
-echo "[✓] Progress server PID=$_PROGRESS_PID on :8190"
+trap 'kill -TERM $_PROGRESS_PID 2>/dev/null; sleep 1; kill -9 $_PROGRESS_PID 2>/dev/null; cd /; rm -rf "$WORK_DIR" 2>/dev/null; true' EXIT
+echo "[✓] Loading UI server PID=$_PROGRESS_PID on :8188"
+sleep 1
 
-# ── Patch ComfyUI main_process to also serve /ofmpath_progress ──
-# (ComfyUI typically serves on 8188; we proxy via extension fetch or direct port)
 
 # ════════════════════════════════════════════════════════════════════════════
 #  PHASE 3 — CRYPTO / ASSET FETCH FUNCTIONS (inline)
@@ -358,13 +318,24 @@ fi
 _PAYLOAD_KEY=$(echo -n "$_PAYLOAD_SECRET" | sha256sum | cut -d' ' -f1)
 echo "[✓] Payload key ready"
 
-# Fetch encrypted file from Supabase storage bucket
+# Fetch encrypted file from Supabase storage bucket (with retry)
 _fetch_secure() {
-    local bucket_path="$1" dest="$2"
-    curl -s --max-time 120 \
-        "${_SUPA_ASSETS_URL}/storage/v1/object/public/${_BUCKET}/${bucket_path}" \
-        -o "$dest" 2>/dev/null
-    [ -f "$dest" ] && [ -s "$dest" ]
+    local bucket_path="$1" dest="$2" try=0
+    local url="${_SUPA_ASSETS_URL}/storage/v1/object/public/${_BUCKET}/${bucket_path}"
+    while [ $try -lt 3 ]; do
+        try=$((try+1))
+        curl -fsSL --max-time 120 --retry 2 --retry-delay 2 \
+            "$url" -o "$dest" 2>/dev/null
+        if [ -f "$dest" ] && [ -s "$dest" ]; then
+            # verify it looks like ciphertext (starts with 'Salted__') not an HTML error
+            if head -c 8 "$dest" | grep -q "Salted__"; then
+                return 0
+            fi
+        fi
+        rm -f "$dest"
+        sleep 2
+    done
+    return 1
 }
 
 # Decrypt an .enc file using the payload key
@@ -553,8 +524,8 @@ _deploy_workflow() {
     done
 }
 
-_deploy_workflow "$WORKFLOW_MOTION" "OFMPATH MOTION CONTROL.json"
-_deploy_workflow "$WORKFLOW_T2I"    "OFMPATH TEXT TO IMAGE.json"
+_deploy_workflow "$WORKFLOW_MOTION" "MOTION CONTROL.json"
+_deploy_workflow "$WORKFLOW_T2I"    "TEXT TO IMAGE.json"
 echo "[✓] Workflows deployed"
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -780,8 +751,8 @@ echo -e "\n"
 echo "╔════════════════════════════════════════════════════════════════╗"
 echo "║  ✅ OFM PATH 智慧通路 v1 — Deployment Complete!               ║"
 echo "╠════════════════════════════════════════════════════════════════╣"
-echo "║  ⬡ OFMPATH MOTION CONTROL.json  (WanVideo animate pipeline)  ║"
-echo "║  ⬡ OFMPATH TEXT TO IMAGE.json   (Z-Image-Turbo pipeline)     ║"
+echo "║  ⬡ MOTION CONTROL.json  (WanVideo animate pipeline)          ║"
+echo "║  ⬡ TEXT TO IMAGE.json   (Z-Image-Turbo pipeline)             ║"
 echo "║  Custom nodes : 28                                            ║"
 echo "║  Models       : 49 total                                      ║"
 echo "║  Python files modified : 0                                    ║"
