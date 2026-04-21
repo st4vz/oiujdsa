@@ -1,410 +1,738 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════
-#  OFM PATH 智慧通路 — Inner Installer
-#  Fetched + decrypted by ofmpath_main.sh from Supabase bucket.
-#  Expects env from outer script:
-#    OFMPATH_TOKEN       — validated token
-#    OFMPATH_PAYLOAD_KEY — derived PBKDF2 key
-#    OFMPATH_SUPA_URL    — https://yvjhjptycwlnjnzzsyju.supabase.co
-#    OFMPATH_BUCKET      — ofm-path
-#    COMFYUI_DIR         — /workspace/ComfyUI
-#    CUSTOM_NODES_DIR    — $COMFYUI_DIR/custom_nodes
-#    PIP                 — python pip path
-#    _fetch_secure, _decrypt_secure — helper functions (exported from outer)
+#  OFM PATH 智慧通路 — Provisioning Bootstrap  (hardened v2)
+#  Runs on Vast.ai as PROVISIONING_SCRIPT  ·  Public script (no secrets here)
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Don't use `set -e` — progress markers must flush even on partial failure.
+# NOTE: no `set -e` — each phase handles its own errors so the preloader
+# never gets orphaned on a silent exit.
 
-: "${OFMPATH_TOKEN:?OFMPATH_TOKEN must be set}"
-: "${OFMPATH_PAYLOAD_KEY:?OFMPATH_PAYLOAD_KEY must be set}"
-: "${COMFYUI_DIR:=/workspace/ComfyUI}"
-: "${CUSTOM_NODES_DIR:=$COMFYUI_DIR/custom_nodes}"
-: "${OFMPATH_SUPA_URL:=https://yvjhjptycwlnjnzzsyju.supabase.co}"
-: "${OFMPATH_BUCKET:=ofm-path}"
+# ── Supabase endpoints ──
+export OFMPATH_SUPA_URL="https://yvjhjptycwlnjnzzsyju.supabase.co"
+export OFMPATH_SUPA_KEY="sb_publishable_RW1gbkXD6roZeUCxfEpQGg_cZ1z7brK"
+export OFMPATH_BUCKET="ofm-path"
 
-MODELS="$COMFYUI_DIR/models"
-WORKFLOWS_DIR="$COMFYUI_DIR/user/default/workflows"
-HF_TOKEN="${HF_TOKEN:-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}"
+# ── Constants ──
+WORKSPACE="/workspace"
+COMFYUI_DIR="$WORKSPACE/ComfyUI"
+CUSTOM_NODES_DIR="$COMFYUI_DIR/custom_nodes"
 
-# Determine pip if outer didn't export it
-if [ -z "${PIP:-}" ]; then
+# ── Logging ──
+# Two logs: one TEMPORARY in /tmp for the browser to poll, one PERMANENT in
+# /workspace that survives finalize cleanup for post-mortem debugging.
+mkdir -p /tmp/ofmpath_loading "$WORKSPACE"
+LOG_FILE="/tmp/ofmpath_loading/install.log"
+DEBUG_LOG="$WORKSPACE/ofmpath_debug.log"
+echo "[OFM] Init started at $(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee "$LOG_FILE" > "$DEBUG_LOG"
+
+# tee to BOTH logs, line-buffered
+exec > >(stdbuf -oL tee -a "$LOG_FILE" "$DEBUG_LOG") 2>&1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 1 — PRELOADER HTML (port 8188)
+# ═══════════════════════════════════════════════════════════════════════════
+_start_preloader() {
+    echo "[OFM] Deploying preloader HTML..."
+
+    cat > /tmp/ofmpath_loading/index.html << 'PRELOADER_HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OFM PATH — Initializing...</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; }
+  body { background:#0a0a0f; color:#00ff88; font-family:'JetBrains Mono','Courier New',monospace;
+         display:flex; justify-content:center; align-items:center; min-height:100vh; position:relative; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:2;
+                 background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0,rgba(0,0,0,.18) 1px,transparent 1px,transparent 3px); }
+  body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:1;
+                background:radial-gradient(ellipse at 50% 50%, rgba(0,255,136,0.05) 0%, transparent 60%); }
+  .wrap { position:relative; z-index:10; max-width:640px; width:92%; padding:36px 40px;
+          background:rgba(10,12,16,0.75); border:1px solid rgba(0,255,136,0.22); border-radius:4px;
+          backdrop-filter:blur(8px); text-align:center;
+          box-shadow:0 0 60px rgba(0,255,136,0.08), inset 0 0 0 1px rgba(0,255,136,0.08);
+          animation:slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  @keyframes slideUp { from { opacity:0; transform:translateY(16px);} to { opacity:1; transform:translateY(0);} }
+  .brand { font-size:11px; letter-spacing:4px; color:#00ff88; opacity:.55; margin-bottom:6px; }
+  pre.ascii { font-size:11px; line-height:1.2; color:#00ff88;
+              text-shadow:0 0 10px rgba(0,255,136,.6); margin:0 0 20px; white-space:pre;
+              font-family:'JetBrains Mono','Courier New',monospace; }
+  .version { font-size:10px; color:#00ff88; opacity:.5; letter-spacing:3px; margin-bottom:24px; text-transform:uppercase; }
+  .status-badge { display:inline-flex; align-items:center; gap:10px; padding:7px 18px;
+                  background:rgba(0,255,136,0.06); border:1px solid rgba(0,255,136,0.25); border-radius:3px;
+                  font-size:12px; color:#88ffcc; margin-bottom:18px; letter-spacing:0.5px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#00ff88;
+         animation:dotPulse 1.3s infinite; box-shadow:0 0 8px #00ff88; }
+  @keyframes dotPulse { 0%,100% { transform:scale(.8); opacity:.6;} 50% { transform:scale(1.25); opacity:1;} }
+  .bar-track { width:100%; height:5px; background:rgba(0,255,136,0.08); border-radius:2px;
+               overflow:hidden; margin-bottom:10px; box-shadow:inset 0 0 0 1px rgba(0,255,136,0.15); }
+  .bar-fill { height:100%; width:0%; background:linear-gradient(90deg,#00ff88,#00ccff);
+              transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 12px #00ff88; }
+  .status-line { font-size:11px; color:#4a8a6a; min-height:16px; margin-bottom:24px;
+                 font-family:'JetBrains Mono',monospace; letter-spacing:0.3px; }
+  .game { margin-bottom:16px; border-radius:3px; overflow:hidden;
+          background:rgba(0,0,0,0.4); border:1px solid rgba(0,255,136,0.2); padding:14px; text-align:center; }
+  #snake { background:#030308; border-radius:2px; border:1px solid rgba(0,255,136,0.15);
+           display:block; margin:0 auto; image-rendering:pixelated; }
+  #snake-score { font-size:11px; color:#00ff88; font-weight:600; margin-top:8px; letter-spacing:1px; }
+  .game-hint { font-size:9px; color:rgba(0,255,136,0.35); margin-top:4px; letter-spacing:2px; text-transform:uppercase; }
+  .tracker { width:100%; background:rgba(0,255,136,0.03); border:1px dashed rgba(0,255,136,0.3);
+             border-radius:3px; padding:14px; display:flex; flex-direction:column; gap:10px; margin-bottom:6px; }
+  .tracker-header { font-size:11px; color:#88ffcc; letter-spacing:0.5px;
+                    display:flex; justify-content:space-between; }
+  .blocks { display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-start; }
+  .block { width:14px; height:14px; border-radius:2px; background:rgba(0,255,136,0.06);
+           border:1px solid rgba(0,255,136,0.2); transition:all 0.3s; position:relative; overflow:hidden; }
+  .block.filled { background:#00ff88; border-color:#00ff88; box-shadow:0 0 6px rgba(0,255,136,0.5); }
+  .block.loading::after { content:''; position:absolute; bottom:0; left:0; right:0; height:50%;
+                          background:rgba(0,255,136,0.4); animation:fill 1s infinite alternate; }
+  @keyframes fill { 0% { height:10%;} 100% { height:90%;} }
+  .current { font-size:10px; color:rgba(136,255,204,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .footer { font-size:10px; color:rgba(0,255,136,0.25); letter-spacing:3px; margin-top:12px; text-transform:uppercase; }
+  .error-state .bar-fill { background:#ff4466 !important; box-shadow:0 0 12px #ff4466; }
+  .error-state .status-badge { color:#ff4466; border-color:rgba(255,68,102,0.4); }
+  .error-state .dot { background:#ff4466; box-shadow:0 0 8px #ff4466; }
+  #refresh-prompt { display:none; margin-top:18px; }
+  .btn { background:linear-gradient(135deg,#00ff88,#00ccff); color:#0a0a0f;
+         border:none; padding:11px 30px; border-radius:3px; font-size:12px; font-weight:600;
+         cursor:pointer; letter-spacing:2px; font-family:'JetBrains Mono',monospace; text-transform:uppercase;
+         box-shadow:0 0 20px rgba(0,255,136,0.3); transition:all .15s; }
+  .btn:hover { transform:translateY(-1px); box-shadow:0 0 30px rgba(0,255,136,0.5); }
+</style>
+</head>
+<body>
+  <div class="wrap" id="main">
+    <div class="brand">OFM PATH 智慧通路</div>
+    <pre class="ascii">
+ ██████╗ ███████╗███╗   ███╗    ██████╗  █████╗ ████████╗██╗  ██╗
+██╔═══██╗██╔════╝████╗ ████║    ██╔══██╗██╔══██╗╚══██╔══╝██║  ██║
+██║   ██║█████╗  ██╔████╔██║    ██████╔╝███████║   ██║   ███████║
+██║   ██║██╔══╝  ██║╚██╔╝██║    ██╔═══╝ ██╔══██║   ██║   ██╔══██║
+╚██████╔╝██║     ██║ ╚═╝ ██║    ██║     ██║  ██║   ██║   ██║  ██║
+ ╚═════╝ ╚═╝     ╚═╝     ╚═╝    ╚═╝     ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝</pre>
+    <div class="version">V1 · SZN VAULT</div>
+    <div class="status-badge" id="status-badge">
+      <span class="dot"></span><span id="status-text">Initializing environment...</span>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
+    <div class="status-line" id="status-line">▸ Connecting to SZN VAULT servers...</div>
+    <div class="game">
+      <canvas id="snake" width="480" height="200"></canvas>
+      <div id="snake-score">◈ 0</div>
+      <div class="game-hint">← → ↑ ↓ to play · awaiting deployment</div>
+    </div>
+    <div class="tracker" id="tracker" style="display:none;">
+      <div class="tracker-header">
+        <span>⬡ Syncing weights: <span id="model-count">0 / 0</span></span>
+        <span id="speed"></span>
+      </div>
+      <div class="blocks" id="blocks"></div>
+      <div class="current" id="current">▸ Awaiting...</div>
+    </div>
+    <div id="refresh-prompt">
+      <p style="color:#88ffcc; font-size:12px; margin-bottom:12px;">▸ Deployment complete</p>
+      <button class="btn" onclick="location.reload()">Launch Interface</button>
+    </div>
+    <div class="footer">SECURE DEPLOYMENT · SZN VAULT</div>
+  </div>
+<script>
+document.addEventListener("contextmenu", e => e.preventDefault(), true);
+document.addEventListener("keydown", e => {
+  const k = e.key ? e.key.toLowerCase() : "";
+  if (e.key === "F12" || (e.ctrlKey && e.shiftKey && "ijc".includes(k)) || (e.ctrlKey && k === "u")) e.preventDefault();
+}, true);
+let modelState = { total: 0, done: 0, rendered: 0, lastDone: 0 };
+function parseModelProgress(text) {
+  const lines = text.split("\n");
+  let total = 0, done = 0, current = '';
+  for (const l of lines) { const m = l.match(/Found\s+(\d+)\s+models/); if (m) total = parseInt(m[1]); }
+  for (const l of lines) {
+    if (l.includes('[SUCCESS]')) done++;
+    const s = l.match(/\[STARTING\]\s*'([^']+)'/); if (s) current = s[1];
+  }
+  if (total === 0) return;
+  const tracker = document.getElementById("tracker");
+  tracker.style.display = "flex";
+  if (modelState.rendered !== total) {
+    const wrap = document.getElementById("blocks"); wrap.innerHTML = '';
+    for (let i = 0; i < total; i++) {
+      const c = document.createElement("div"); c.className = "block"; c.id = "c" + i; wrap.appendChild(c);
+    }
+    modelState.rendered = total;
+  }
+  for (let i = 0; i < total; i++) {
+    const c = document.getElementById("c" + i); if (!c) continue;
+    if (i < done) c.className = "block filled";
+    else if (i === done) c.className = "block loading";
+    else c.className = "block";
+  }
+  document.getElementById("model-count").textContent = done + " / " + total;
+  if (current && done < total) {
+    const hex = "0x" + Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6,'0');
+    document.getElementById("current").textContent = "▸ Syncing " + hex + "...";
+    document.getElementById("speed").textContent = (Math.random() * 18 + 6).toFixed(1) + " MB/s";
+  } else if (done >= total && total > 0) {
+    document.getElementById("current").textContent = "▸ All weights synced ✓";
+    document.getElementById("speed").textContent = "";
+  }
+  modelState.lastDone = done; modelState.total = total; modelState.done = done;
+}
+let handoffStarted = false;
+setInterval(async () => {
+  try {
+    const r = await fetch("ready?t=" + Date.now());
+    if (r.ok && (await r.text()).trim() === "READY" && !handoffStarted) { handoffStarted = true; startHandoff(); }
+  } catch (_) {}
+}, 2000);
+function startHandoff() {
+  document.getElementById("bar").style.width = "100%";
+  document.getElementById("status-text").textContent = "Starting ComfyUI...";
+  document.getElementById("speed").textContent = "";
+  const ping = setInterval(async () => {
+    try {
+      const r = await fetch("/?_t=" + Date.now(), { cache: "no-store" });
+      if (r.ok) {
+        const html = await r.text();
+        if (html.includes("comfyui") || html.includes("litegraph") || html.length > 5000) { clearInterval(ping); location.reload(); }
+      }
+    } catch (_) {}
+  }, 1500);
+  setTimeout(() => { document.getElementById("refresh-prompt").style.display = "block"; }, 20000);
+}
+async function poll() {
+  try {
+    const res = await fetch("install.log?t=" + Date.now());
+    if (!res.ok) return;
+    const text = await res.text();
+    const bar = document.getElementById("bar"), status = document.getElementById("status-text"), line = document.getElementById("status-line");
+    const lines = text.split("\n").filter(l => l.trim());
+    if (lines.length) {
+      let raw = lines[lines.length-1].substring(0, 80);
+      if (raw.includes("READY") || raw.includes("FULLY OPERATIONAL")) {
+        line.textContent = "▸ Finalizing deployment...";
+      } else {
+        const chars = "████▓▓▒▒░░0123456789ABCDEF";
+        let obf = "";
+        for (let k=0; k<Math.min(raw.length, 24); k++) obf += chars.charAt(Math.floor(Math.random()*chars.length));
+        const hex = "0x" + Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6, "0");
+        line.textContent = "▸ [" + hex + "] " + obf + (raw.length > 24 ? "..." : "");
+      }
+    }
+    let pct = 0;
+    for (let i = lines.length - 1; i >= 0; i--) { const m = lines[i].match(/\[PROGRESS:\s*(\d+)\]/); if (m) { pct = parseInt(m[1]); break; } }
+    if (pct > 0) bar.style.width = pct + "%";
+    parseModelProgress(text);
+    if (text.includes("ACCESS DENIED") || text.includes("TOKEN REJECTED") || text.includes("LICENSE DENIED") || text.includes("AUTH ERROR") || text.includes("CRITICAL HALT")) {
+      bar.style.width = "100%"; document.getElementById("main").classList.add("error-state");
+      status.textContent = "⛔ Access denied"; line.textContent = "Check OFMPATH_TOKEN. Retrying...";
+      setTimeout(() => location.reload(), 10000); return;
+    } else if (text.includes("SYSTEM FULLY OPERATIONAL") && !handoffStarted) {
+      handoffStarted = true; startHandoff();
+    } else {
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const l = lines[i];
+        if (l.includes("UI Lockdown")) { status.textContent = "Applying UI protection..."; break; }
+        else if (l.includes("Deploy workflow")) { status.textContent = "Deploying workflows..."; break; }
+        else if (l.includes("Found") && l.includes("models")) { status.textContent = "Syncing model weights..."; break; }
+        else if (l.includes("custom node") || l.includes("install_node") || l.includes("Phase B")) { status.textContent = "Installing custom nodes..."; break; }
+        else if (l.includes("Validating token")) { status.textContent = "Verifying license..."; break; }
+        else if (l.includes("ComfyUI base") || l.includes("Waiting for")) { status.textContent = "Building ComfyUI core..."; break; }
+      }
+    }
+  } catch (e) {}
+}
+setInterval(poll, 1500); poll();
+(function() {
+  const can = document.getElementById('snake'); if (!can) return;
+  const ctx = can.getContext('2d'); const G = 16;
+  const COLS = Math.floor(can.width / G), ROWS = Math.floor(can.height / G);
+  let snake = [{x:5, y:Math.floor(ROWS/2)}]; let dir = {x:1, y:0};
+  let food = newFood(); let score = 0, alive = true;
+  function newFood() {
+    let f; do { f = {x:Math.floor(Math.random()*COLS), y:Math.floor(Math.random()*ROWS)}; }
+    while (snake.some(s => s.x===f.x && s.y===f.y)); return f;
+  }
+  function draw() {
+    ctx.fillStyle = '#030308'; ctx.fillRect(0, 0, can.width, can.height);
+    ctx.strokeStyle = 'rgba(0,255,136,0.04)'; ctx.lineWidth = 0.5;
+    for (let x=0; x<can.width; x+=G) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,can.height); ctx.stroke(); }
+    for (let y=0; y<can.height; y+=G) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(can.width,y); ctx.stroke(); }
+    ctx.save(); ctx.shadowColor = '#ff4466'; ctx.shadowBlur = 10; ctx.fillStyle = '#ff4466';
+    ctx.fillRect(food.x*G+2, food.y*G+2, G-4, G-4); ctx.restore();
+    snake.forEach((cell, i) => {
+      if (i === 0) {
+        ctx.save(); ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 8; ctx.fillStyle = '#00ff88';
+        ctx.fillRect(cell.x*G+1, cell.y*G+1, G-2, G-2); ctx.restore();
+      } else {
+        const a = 1 - (i/snake.length)*0.6;
+        ctx.fillStyle = 'rgba(0,255,136,' + a + ')';
+        ctx.fillRect(cell.x*G+1, cell.y*G+1, G-2, G-2);
+      }
+    });
+  }
+  function step() {
+    if (!alive) return;
+    const head = {x:snake[0].x+dir.x, y:snake[0].y+dir.y};
+    if (head.x < 0) head.x = COLS-1; else if (head.x >= COLS) head.x = 0;
+    if (head.y < 0) head.y = ROWS-1; else if (head.y >= ROWS) head.y = 0;
+    if (snake.some(s => s.x===head.x && s.y===head.y)) {
+      alive = false;
+      setTimeout(() => { snake = [{x:5, y:Math.floor(ROWS/2)}]; dir = {x:1, y:0};
+        score = 0; alive = true; food = newFood();
+        document.getElementById('snake-score').textContent = '◈ 0'; }, 1500);
+      return;
+    }
+    snake.unshift(head);
+    if (head.x===food.x && head.y===food.y) {
+      score++; document.getElementById('snake-score').textContent = '◈ ' + score; food = newFood();
+    } else { snake.pop(); }
+    draw();
+  }
+  document.addEventListener('keydown', e => {
+    const K = {ArrowLeft:{x:-1,y:0}, ArrowRight:{x:1,y:0}, ArrowUp:{x:0,y:-1}, ArrowDown:{x:0,y:1}};
+    if (K[e.key]) { const d = K[e.key]; if (d.x !== -dir.x || d.y !== -dir.y) dir = d; e.preventDefault(); }
+  });
+  draw(); setInterval(step, 110);
+})();
+</script>
+</body>
+</html>
+PRELOADER_HTML
+
+    cd /tmp/ofmpath_loading || { echo "[OFM] ⚠ cannot cd /tmp/ofmpath_loading"; return 1; }
+    supervisorctl stop comfyui > /dev/null 2>&1 || true
+    sleep 2
+    fuser -k 8188/tcp > /dev/null 2>&1 || true
+    sleep 1
+    python3 -m http.server 8188 --bind 0.0.0.0 > /dev/null 2>&1 &
+    export PRELOADER_PID=$!
+    echo "[OFM] Preloader server PID=$PRELOADER_PID on :8188"
+    mkdir -p "$WORKSPACE"; cd "$WORKSPACE" || true
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 2 — SYSTEM DEPENDENCIES
+# ═══════════════════════════════════════════════════════════════════════════
+_install_deps() {
+    echo "[PROGRESS: 5]"
+    echo "=========================================="
+    echo "[OFM] Installing system dependencies..."
+    apt-get update -qq
+    apt-get install -y -qq psmisc wget aria2 curl libimage-exiftool-perl openssl
+    echo "[OFM] System deps installed"
+
     if   [ -x "/venv/main/bin/pip" ];       then PIP="/venv/main/bin/pip"
     elif [ -x "$COMFYUI_DIR/.venv/bin/pip" ]; then PIP="$COMFYUI_DIR/.venv/bin/pip"
     else PIP="pip"; fi
-fi
-
-# Fallback fetch/decrypt if outer didn't export the helpers
-if ! declare -F _fetch_secure >/dev/null; then
-  _fetch_secure() {
-      local p="$1" d="$2" t=0
-      local url="${OFMPATH_SUPA_URL}/storage/v1/object/public/${OFMPATH_BUCKET}/${p}"
-      while [ $t -lt 5 ]; do
-          t=$((t+1))
-          curl -fsSL --max-time 120 --retry 2 --retry-delay 2 -o "$d" "$url" 2>/dev/null
-          [ -s "$d" ] && head -c 8 "$d" | grep -q "Salted__" && return 0
-          rm -f "$d"; sleep 2
-      done; return 1
-  }
-fi
-if ! declare -F _decrypt_secure >/dev/null; then
-  _decrypt_secure() {
-      openssl enc -aes-256-cbc -d -salt -pbkdf2 -iter 100000 \
-          -pass "pass:${OFMPATH_PAYLOAD_KEY}" -in "$1" -out "$2" 2>/dev/null
-  }
-fi
-
-echo -e "\n\n"
-echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║  OFM PATH 智慧通路  v1 — Inner Installer                       ║"
-echo "║  MOTION CONTROL + TEXT TO IMAGE                                ║"
-echo "╚════════════════════════════════════════════════════════════════╝"
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  PHASE A — FETCH + DECRYPT WORKFLOWS
-# ═══════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase A: Fetch workflows ━━━"
-echo "[PROGRESS: 35]"
-
-mkdir -p "$WORKFLOWS_DIR" "$COMFYUI_DIR/input"
-
-WORKFLOW_MOTION=""
-WORKFLOW_T2I=""
-
-if _fetch_secure "ofmpath_motion.json.enc" /tmp/motion.enc; then
-    if _decrypt_secure /tmp/motion.enc /tmp/motion.json; then
-        if python3 -c "import json; d=json.load(open('/tmp/motion.json')); assert 'nodes' in d" 2>/dev/null; then
-            WORKFLOW_MOTION=/tmp/motion.json
-            echo "[OFM] ✓ MOTION CONTROL workflow loaded"
-        fi
-    fi
-    rm -f /tmp/motion.enc
-fi
-
-if _fetch_secure "ofmpath_t2i.json.enc" /tmp/t2i.enc; then
-    if _decrypt_secure /tmp/t2i.enc /tmp/t2i.json; then
-        if python3 -c "import json; d=json.load(open('/tmp/t2i.json')); assert 'nodes' in d" 2>/dev/null; then
-            WORKFLOW_T2I=/tmp/t2i.json
-            echo "[OFM] ✓ TEXT TO IMAGE workflow loaded"
-        fi
-    fi
-    rm -f /tmp/t2i.enc
-fi
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  PHASE B — INSTALL CUSTOM NODES (28)
-# ═══════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase B: Install custom nodes ━━━"
-echo "[PROGRESS: 42]"
-cd "$CUSTOM_NODES_DIR"
-_NODE_IDX=0
-
-_install_node() {
-    local name="$1" url="$2"
-    local idx=$((${_NODE_IDX:-0} + 1))
-    _NODE_IDX=$idx
-    # Progress marker — UI stays animated even during slow pip installs
-    local pct=$(( 42 + (idx * 12 / 28) ))
-    echo "[PROGRESS: ${pct}]"
-
-    if [ -d "$name" ]; then
-        echo "  [ok] $name present (${idx}/28) (0x$(printf "%08X" $RANDOM))"
-    else
-        echo "  [+] Syncing $name (${idx}/28) (0x$(printf "%08X" $RANDOM))"
-        # 2-minute ceiling on git clone — kills anything hung on a flaky repo
-        timeout 120 git clone --depth 1 "$url" "$name" 2>/dev/null || {
-            echo "  [!] Clone timeout/failed: $name (continuing)"
-            return 0  # never abort the pipeline over one node
-        }
-    fi
-    # 3-minute ceiling on pip install — prevents hangs on heavy dep trees
-    if [ -f "$name/requirements.txt" ]; then
-        timeout 180 "$PIP" install -r "$name/requirements.txt" --quiet 2>/dev/null \
-            || echo "  [!] requirements timeout/errors: $name (continuing)"
-    fi
-    # NOTE: intentionally NOT running install.py — packages like Impact-Pack
-    # and SeedVR2 use it to download their own models at install-time, which
-    # hangs indefinitely on flaky networks. Phase C handles all models.
+    export PIP
+    echo "[OFM] PIP=$PIP"
+    "$PIP" install --quiet requests 2>/dev/null || true
 }
 
-_install_node "ComfyUI-Manager"                "https://github.com/ltdrdata/ComfyUI-Manager"
-_install_node "ComfyUI-WanVideoWrapper"        "https://github.com/kijai/ComfyUI-WanVideoWrapper"
-_install_node "ComfyUI-Impact-Pack"            "https://github.com/ltdrdata/ComfyUI-Impact-Pack"
-_install_node "ComfyUI-Custom-Scripts"         "https://github.com/pythongosssss/ComfyUI-Custom-Scripts"
-_install_node "ComfyUI_LayerStyle"             "https://github.com/chflame163/ComfyUI_LayerStyle"
-_install_node "rgthree-comfy"                  "https://github.com/rgthree/rgthree-comfy"
-_install_node "ComfyUI-Easy-Use"               "https://github.com/yolain/ComfyUI-Easy-Use"
-_install_node "ComfyUI-SeedVR2_VideoUpscaler"  "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
-_install_node "ComfyUI_essentials"             "https://github.com/cubiq/ComfyUI_essentials"
-_install_node "RES4LYF"                        "https://github.com/ClownsharkBatwing/RES4LYF"
-_install_node "cg-use-everywhere"              "https://github.com/chrisgoringe/cg-use-everywhere"
-_install_node "ComfyUI-Impact-Subpack"         "https://github.com/ltdrdata/ComfyUI-Impact-Subpack"
-_install_node "ComfyUI-mxToolkit"              "https://github.com/Smirnov75/ComfyUI-mxToolkit"
-_install_node "ComfyUI-Image-Size-Tools"       "https://github.com/TheLustriVA/ComfyUI-Image-Size-Tools"
-_install_node "zhihui_nodes_comfyui"           "https://github.com/ZhiHui6/zhihui_nodes_comfyui"
-_install_node "ComfyUI-KJNodes"                "https://github.com/kijai/ComfyUI-KJNodes"
-_install_node "ComfyUI-Crystools"              "https://github.com/crystian/ComfyUI-Crystools"
-_install_node "ComfyUI_HuggingFace_Downloader" "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader"
-_install_node "CRT-Nodes"                      "https://github.com/plugcrypt/CRT-Nodes"
-_install_node "ComfyUI-post-processing-nodes"  "https://github.com/EllangoK/ComfyUI-post-processing-nodes"
-_install_node "comfyui_controlnet_aux"         "https://github.com/Fannovel16/comfyui_controlnet_aux"
-_install_node "comfyui-teskors-utils"          "https://github.com/teskor-hub/comfyui-teskors-utils"
-_install_node "Comfyui-Resolution-Master"      "https://github.com/Azornes/Comfyui-Resolution-Master"
-_install_node "ComfyUI-VideoHelperSuite"       "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
-_install_node "ComfyUI-segment-anything-2"     "https://github.com/kijai/ComfyUI-segment-anything-2"
-_install_node "ComfyUI-ZMG-Nodes"              "https://github.com/fq393/ComfyUI-ZMG-Nodes"
-_install_node "ComfyUI-WanAnimatePreprocess"   "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
-_install_node "ComfyUI-SAM3"                   "https://github.com/PozzettiAndrea/ComfyUI-SAM3"
-
-# KJNodes compatibility fix
-KJ="$CUSTOM_NODES_DIR/ComfyUI-KJNodes/nodes/nodes.py"
-if [ -f "$KJ" ] && grep -q "search_aliases" "$KJ" 2>/dev/null; then
-    sed -i 's/search_aliases=\[.*\],\?//g' "$KJ"
-    echo "[OFM] ✓ KJNodes search_aliases fix applied"
-fi
-
-echo "[OFM] ✓ All custom nodes installed"
-
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE C — DOWNLOAD MODELS (49 total)
+#  PHASE 3 — TOKEN VALIDATION GATE
 # ═══════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase C: Download models ━━━"
-echo "[PROGRESS: 55]"
-echo "Found 49 models to verify"
+_validate_token() {
+    echo "[PROGRESS: 15]"
+    echo "=========================================="
+    echo "[OFM] Validating token..."
 
-_MODEL_IDX=0
-_MODEL_TOTAL=49
+    if [ -z "${OFMPATH_TOKEN:-}" ]; then
+        echo "[OFM] FATAL: OFMPATH_TOKEN env var not set"
+        _show_error_page "NO TOKEN PROVIDED<br><br>OFMPATH_TOKEN environment variable not set.<br>Add it to your Vast.ai template env vars."
+    fi
 
-_dl() {
-    local dir="$1" file="$2" url="$3" label="${4:-asset}"
-    _MODEL_IDX=$((_MODEL_IDX + 1))
-    local pct=$(( 55 + (_MODEL_IDX * 35 / _MODEL_TOTAL) ))
-    mkdir -p "$dir"
-    echo "[STARTING] '${label}'"
-    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
-        echo "  [ok] cached (0x$(printf "%08X" $RANDOM))"
-        echo "[SUCCESS]"
-        echo "[PROGRESS: ${pct}]"
-        return
+    if ! [[ "$OFMPATH_TOKEN" =~ ^ofmpath_[A-Fa-f0-9]{40,64}$ ]]; then
+        echo "[OFM] FATAL: token format invalid"
+        _show_error_page "INVALID TOKEN FORMAT<br><br>Token must match pattern: ofmpath_ + 48 hex chars"
     fi
-    local hdr=""
-    [[ "$url" =~ huggingface\.co ]] && hdr="Authorization: Bearer $HF_TOKEN"
-    echo "  [+] Syncing (0x$(printf "%08X" $RANDOM))..."
-    if command -v aria2c >/dev/null 2>&1; then
-        if [ -n "$hdr" ]; then
-            aria2c --console-log-level=error -c -x 16 -s 16 -k 1M --header="$hdr" -d "$dir" -o "$file" "$url" >/dev/null 2>&1 \
-                || curl -fsSL --retry 2 -H "$hdr" -o "$dir/$file" "$url"
-        else
-            aria2c --console-log-level=error -c -x 16 -s 16 -k 1M -d "$dir" -o "$file" "$url" >/dev/null 2>&1 \
-                || curl -fsSL --retry 2 -o "$dir/$file" "$url"
-        fi
-    else
-        if [ -n "$hdr" ]; then
-            curl -fsSL --retry 2 -H "$hdr" -o "$dir/$file" "$url"
-        else
-            curl -fsSL --retry 2 -o "$dir/$file" "$url"
-        fi
+
+    echo "[OFM] Calling get_payload_secret RPC..."
+    local SECRET_RESPONSE
+    SECRET_RESPONSE=$(curl -s --max-time 15 -X POST \
+        "${OFMPATH_SUPA_URL}/rest/v1/rpc/get_payload_secret" \
+        -H "apikey: ${OFMPATH_SUPA_KEY}" \
+        -H "Authorization: Bearer ${OFMPATH_SUPA_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{\"p_token\":\"${OFMPATH_TOKEN}\"}" 2>/dev/null)
+    echo "[OFM] RPC response length: ${#SECRET_RESPONSE}"
+
+    local MASTER_SECRET
+    MASTER_SECRET=$(printf '%s' "$SECRET_RESPONSE" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d if isinstance(d,str) and len(d) >= 32 else '', end='')
+except Exception as e:
+    sys.stderr.write('json parse err: ' + str(e) + '\n')
+    print('', end='')
+" 2>/dev/null)
+    echo "[OFM] MASTER_SECRET length: ${#MASTER_SECRET}"
+
+    if [ -z "$MASTER_SECRET" ]; then
+        echo "[OFM] CRITICAL HALT — RPC did not return valid payload secret"
+        echo "[OFM] RPC body snippet: ${SECRET_RESPONSE:0:200}"
+        _show_error_page "ACCESS DENIED<br><br>Token validation failed. Your subscription may be inactive."
     fi
-    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
-        echo "[SUCCESS]"
-    else
-        echo "[FAILED] $label"
+
+    # Derive and EXPORT — use explicit commands to ensure export survives
+    local _key
+    _key=$(printf '%s' "$MASTER_SECRET" | sha256sum | awk '{print $1}')
+    if [ -z "$_key" ] || [ ${#_key} -ne 64 ]; then
+        echo "[OFM] CRITICAL HALT — failed to derive 64-hex key (got length=${#_key})"
+        _show_error_page "KEY DERIVATION FAILED"
     fi
-    echo "[PROGRESS: ${pct}]"
+    export OFMPATH_PAYLOAD_KEY="$_key"
+    echo "[OFM] ✓ Token validated"
+    echo "[OFM] ✓ Payload key derived (length=${#OFMPATH_PAYLOAD_KEY})"
 }
 
-# ── DIFFUSION / UNET (3) ──
-_dl "$MODELS/diffusion_models" "z_image_turbo_bf16.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" "z_image_bf16"
-_dl "$MODELS/diffusion_models" "z-image-turbo-fp8-e4m3fn.safetensors" \
-    "https://huggingface.co/T5B/Z-Image-Turbo-FP8/resolve/main/z-image-turbo-fp8-e4m3fn.safetensors" "z_image_fp8"
-_dl "$MODELS/diffusion_models" "WanModel.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanModel.safetensors" "wan_diffusion"
-
-# ── TEXT ENCODERS (3) → text_encoders/ (not clip/) ──
-_dl "$MODELS/text_encoders" "qwen_3_4b.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "qwen3_4b"
-_dl "$MODELS/text_encoders" "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" \
-    "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/refs%2Fpr%2F5/models/clip/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" "umt5xxl"
-_dl "$MODELS/text_encoders" "text_enc.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors" "text_enc"
-
-# ── CLIP VISION (2) ──
-_dl "$MODELS/clip_vision" "klip_vision.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors" "clip_vision_k"
-_dl "$MODELS/clip_vision" "clip_vision_h.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors" "clip_vision_h"
-
-# ── VAE (2) ──
-_dl "$MODELS/vae" "ae.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" "vae_ae"
-_dl "$MODELS/vae" "vae.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors" "vae_wan"
-
-# ── CONTROLNET (2) ──
-_dl "$MODELS/controlnet" "Wan21_Uni3C_controlnet_fp16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors" "ctrl_wan"
-_dl "$MODELS/controlnet" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
-    "https://huggingface.co/arhiteector/zimage/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors" "ctrl_zimg"
-
-# ── CHECKPOINTS (1) ──
-_dl "$MODELS/checkpoints" "detect.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" "ckpt_detect"
-
-# ── LORAS (7) ──
-_dl "$MODELS/loras" "real.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/real.safetensors" "lora_real"
-_dl "$MODELS/loras" "XXX.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/XXX.safetensors" "lora_xxx"
-_dl "$MODELS/loras" "gpu.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/gpu.safetensors" "lora_gpu"
-_dl "$MODELS/loras" "WanFun.reworked.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanFun.reworked.safetensors" "lora_wanfun"
-_dl "$MODELS/loras" "light.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/light.safetensors" "lora_light"
-_dl "$MODELS/loras" "WanPusa.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors" "lora_pusa"
-_dl "$MODELS/loras" "wan.reworked.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors" "lora_wanrw"
-
-# ── DETECTION (3) ──
-_dl "$MODELS/detection" "yolov10m.onnx" \
-    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" "det_yolo"
-_dl "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" "det_vitpose_data"
-_dl "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx" "det_vitpose_model"
-
-# ── SAM (1) ──
-_dl "$MODELS/sams" "sam_vit_b_01ec64.pth" \
-    "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/sams/sam_vit_b_01ec64.pth" "sam_vit_b"
-
-# ── UPSCALER (1) ──
-_dl "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/4xUltrasharp_4xUltrasharpV10.pt" "upscaler"
-
-# ── ULTRALYTICS BBOX (11) ──
-_dl "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/face_yolov8s.pt" "bbox_face"
-_dl "$MODELS/ultralytics/bbox" "femaleBodyDetection_yolo26.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/femaleBodyDetection_yolo26.pt" "bbox_body"
-_dl "$MODELS/ultralytics/bbox" "female_breast-v4.2.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/female_breast-v4.2.pt" "bbox_breast"
-_dl "$MODELS/ultralytics/bbox" "nipples_yolov8s.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/nipples_yolov8s.pt" "bbox_nipples"
-_dl "$MODELS/ultralytics/bbox" "vagina-v4.2.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/vagina-v4.2.pt" "bbox_vagina"
-_dl "$MODELS/ultralytics/bbox" "assdetailer.pt" \
-    "https://huggingface.co/gazsuv/xmode/resolve/main/assdetailer.pt" "bbox_ass"
-_dl "$MODELS/ultralytics/bbox" "Eyeful_v2-Paired.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyeful_v2-Paired.pt" "bbox_eyes_v2"
-_dl "$MODELS/ultralytics/bbox" "Eyes.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyes.pt" "bbox_eyes"
-_dl "$MODELS/ultralytics/bbox" "FacesV1.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/FacesV1.pt" "bbox_faces"
-_dl "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/hand_yolov8s.pt" "bbox_hand"
-_dl "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
-    "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt" "bbox_foot"
-
-# ── QWEN3-VL-4B-Instruct-heretic-7refusal (13 files) ──
-_QWEN_DIR="$MODELS/LLM/Qwen3-VL-4B-Instruct-heretic-7refusal"
-_QWEN_BASE="https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main"
-_dl "$_QWEN_DIR" "added_tokens.json"            "$_QWEN_BASE/added_tokens.json"            "qwen_added"
-_dl "$_QWEN_DIR" "chat_template.jinja"          "$_QWEN_BASE/chat_template.jinja"          "qwen_chat"
-_dl "$_QWEN_DIR" "config.json"                  "$_QWEN_BASE/config.json"                  "qwen_config"
-_dl "$_QWEN_DIR" "generation_config.json"       "$_QWEN_BASE/generation_config.json"       "qwen_gen"
-_dl "$_QWEN_DIR" "merges.txt"                   "$_QWEN_BASE/merges.txt"                   "qwen_merges"
-_dl "$_QWEN_DIR" "model.safetensors.index.json" "$_QWEN_BASE/model.safetensors.index.json" "qwen_idx"
-_dl "$_QWEN_DIR" "preprocessor_config.json"     "$_QWEN_BASE/preprocessor_config.json"     "qwen_pre"
-_dl "$_QWEN_DIR" "special_tokens_map.json"      "$_QWEN_BASE/special_tokens_map.json"      "qwen_spc"
-_dl "$_QWEN_DIR" "tokenizer.json"               "$_QWEN_BASE/tokenizer.json"               "qwen_tok"
-_dl "$_QWEN_DIR" "tokenizer_config.json"        "$_QWEN_BASE/tokenizer_config.json"        "qwen_tokcfg"
-_dl "$_QWEN_DIR" "vocab.json"                   "$_QWEN_BASE/vocab.json"                   "qwen_vocab"
-_dl "$_QWEN_DIR" "model-00001-of-00002.safetensors" \
-    "$_QWEN_BASE/model-00001-of-00002.safetensors" "qwen_shard1"
-_dl "$_QWEN_DIR" "model-00002-of-00002.safetensors" \
-    "$_QWEN_BASE/model-00002-of-00002.safetensors" "qwen_shard2"
-
-echo "[OFM] ✓ Model downloads complete"
-
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE D — DEPLOY WORKFLOWS
+#  PHASE 4 — SECURE FETCH + DECRYPT HELPERS
 # ═══════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase D: Deploy workflows ━━━"
-echo "[PROGRESS: 90]"
-
-_deploy_workflow() {
-    local src="$1" name="$2"
-    if [ -z "$src" ] || [ ! -f "$src" ]; then
-        echo "  [!] Skipped: $name (not fetched)"
-        return
-    fi
-    cp "$src" "$COMFYUI_DIR/$name"
-    cp "$src" "$WORKFLOWS_DIR/$name"
-    cp "$src" "$COMFYUI_DIR/input/$name"
-    echo "  [✓] Deployed: $name"
-    find "$COMFYUI_DIR/web" /venv/lib/python*/site-packages/comfyui_frontend_package/ \
-        -maxdepth 4 -name "defaultGraph.json" -type f 2>/dev/null | while read -r gp; do
-        cp "$src" "$gp"
+_fetch_secure() {
+    local path="$1" dest="$2" tries=0 max=5
+    local url="${OFMPATH_SUPA_URL}/storage/v1/object/public/${OFMPATH_BUCKET}/${path}"
+    while [ $tries -lt $max ]; do
+        tries=$((tries + 1))
+        if curl -fsSL --max-time 120 --retry 2 --retry-delay 2 -o "$dest" "$url" 2>/dev/null; then
+            if [ -s "$dest" ] && head -c 8 "$dest" | grep -q "Salted__"; then
+                return 0
+            fi
+        fi
+        rm -f "$dest"; sleep 2
     done
+    return 1
 }
 
-_deploy_workflow "$WORKFLOW_MOTION" "MOTION CONTROL.json"
-_deploy_workflow "$WORKFLOW_T2I"    "TEXT TO IMAGE.json"
-
-# Clean temp workflow files
-rm -f /tmp/motion.json /tmp/t2i.json
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  PHASE E — COMFYUI SETTINGS
-# ═══════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase E: ComfyUI settings ━━━"
-SETTINGS_DIR="$COMFYUI_DIR/user/default"
-mkdir -p "$SETTINGS_DIR"
-
-cat > "$SETTINGS_DIR/comfy.settings.json" << 'SETTINGSJSON'
-{
-    "Comfy.Locale": "en",
-    "Comfy.DevMode": false,
-    "Comfy.Logging.Enabled": false,
-    "Comfy.Graph.CanvasInfo": false,
-    "Comfy.NodeSearchBoxImpl": "default",
-    "Comfy.Workflow.WorkflowTabsPosition": "Sidebar",
-    "Comfy.Sidebar.Location": "left",
-    "Comfy.Sidebar.Size": "small"
+_decrypt_secure() {
+    local src="$1" dest="$2"
+    [ -f "$src" ] || return 1
+    [ -n "${OFMPATH_PAYLOAD_KEY:-}" ] || return 1
+    openssl enc -aes-256-cbc -d -salt -pbkdf2 -iter 100000 \
+        -pass "pass:${OFMPATH_PAYLOAD_KEY}" \
+        -in "$src" -out "$dest" 2>/dev/null
 }
-SETTINGSJSON
-echo "[OFM] ✓ ComfyUI settings written"
+
+export -f _fetch_secure _decrypt_secure
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE F — INVENTORY REPORT
+#  PHASE 5 — WAIT FOR VAST.AI COMFYUI BASE
 # ═══════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase F: Inventory ━━━"
-_total_files=0
-for _d in diffusion_models clip text_encoders clip_vision vae controlnet loras checkpoints sams upscale_models detection ultralytics/bbox LLM; do
-    _p="$MODELS/$_d"
-    [ -d "$_p" ] || continue
-    _n=$(find "$_p" -type f 2>/dev/null | wc -l)
-    _sz=$(du -sh "$_p" 2>/dev/null | cut -f1)
-    printf "  %-22s %3d files  %s\n" "$_d" "$_n" "$_sz"
-    _total_files=$((_total_files + _n))
-done
-echo "  ──────────────────────────────────────────"
-echo "  Total:  $_total_files model files"
-echo "  Disk:   $(df -h "$MODELS" | tail -1 | awk '{print $4 " free of " $2}')"
+_wait_for_comfy() {
+    echo "[PROGRESS: 20]"
+    echo "=========================================="
+    echo "[OFM] Waiting for Vast.ai ComfyUI base..."
 
-echo ""
-echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║  ✅ OFM PATH 智慧通路 — Inner installer complete              ║"
-echo "╠════════════════════════════════════════════════════════════════╣"
-echo "║  ⬡ MOTION CONTROL.json                                        ║"
-echo "║  ⬡ TEXT TO IMAGE.json                                         ║"
-echo "║  Custom nodes : 28                                             ║"
-echo "║  Models       : 49                                             ║"
-echo "╚════════════════════════════════════════════════════════════════╝"
+    local timeout=600 elapsed=0
+    while [ ! -f "$COMFYUI_DIR/main.py" ]; do
+        sleep 5; elapsed=$((elapsed + 5))
+        if [ $((elapsed % 30)) -eq 0 ]; then
+            echo "[OFM] Still waiting for ComfyUI base (${elapsed}s)..."
+        fi
+        if [ $elapsed -ge $timeout ]; then
+            _show_error_page "COMFYUI BASE INSTALL TIMEOUT<br><br>Base install did not complete within 10 minutes."
+        fi
+    done
+    echo "[OFM] ✓ ComfyUI base detected at $COMFYUI_DIR"
+
+    cd "$COMFYUI_DIR" 2>/dev/null || { echo "[OFM] ⚠ cannot cd into $COMFYUI_DIR"; return; }
+    git config --global --add safe.directory "$COMFYUI_DIR"
+    timeout 60 git pull origin master 2>/dev/null || timeout 60 git pull origin main 2>/dev/null || echo "[OFM] ⚠ git pull skipped"
+    if git status 2>/dev/null | grep -q "HEAD detached"; then
+        timeout 60 git fetch origin 2>/dev/null || true
+        git checkout master 2>/dev/null || git checkout main 2>/dev/null || true
+        timeout 60 git pull 2>/dev/null || true
+    fi
+    timeout 120 "$PIP" install --upgrade comfyui-frontend-package --quiet 2>/dev/null || echo "[OFM] ⚠ frontend pkg upgrade skipped"
+    echo "[OFM] ✓ ComfyUI updated"
+    cd "$WORKSPACE" || true
+
+    # Verify custom_nodes dir exists BEFORE inner runs
+    if [ ! -d "$CUSTOM_NODES_DIR" ]; then
+        echo "[OFM] Creating missing custom_nodes dir"
+        mkdir -p "$CUSTOM_NODES_DIR"
+    fi
+
+    supervisorctl stop comfyui >/dev/null 2>&1 || true
+    sleep 2
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 6 — DEPLOY OFMPATH STACK
+# ═══════════════════════════════════════════════════════════════════════════
+_deploy_stack() {
+    echo "[PROGRESS: 30]"
+    echo "=========================================="
+    echo "[OFM] Deploying OFM PATH stack..."
+
+    # Sanity check: env vars MUST be set before we try to run the inner
+    if [ -z "${OFMPATH_TOKEN:-}" ] || [ -z "${OFMPATH_PAYLOAD_KEY:-}" ]; then
+        echo "[OFM] CRITICAL: env vars not set before deploy_stack"
+        echo "[OFM]   OFMPATH_TOKEN=${OFMPATH_TOKEN:+SET(len=${#OFMPATH_TOKEN})}"
+        echo "[OFM]   OFMPATH_PAYLOAD_KEY=${OFMPATH_PAYLOAD_KEY:+SET(len=${#OFMPATH_PAYLOAD_KEY})}"
+        _show_error_page "INTERNAL ERROR<br><br>Environment variables lost between phases. Check debug log."
+    fi
+
+    cd "$WORKSPACE" || true
+
+    echo "[OFM] Fetching ofmpath_install.sh.enc from bucket..."
+    if _fetch_secure "ofmpath_install.sh.enc" "/tmp/ofmpath_install.sh.enc"; then
+        echo "[OFM] ✓ Fetched $(stat -c%s /tmp/ofmpath_install.sh.enc 2>/dev/null) bytes"
+        if _decrypt_secure "/tmp/ofmpath_install.sh.enc" "/tmp/ofmpath_install.sh"; then
+            local DEC_SIZE=$(stat -c%s /tmp/ofmpath_install.sh 2>/dev/null)
+            echo "[OFM] ✓ Decrypted to $DEC_SIZE bytes"
+            if [ "$DEC_SIZE" -lt 1000 ]; then
+                echo "[OFM] ⚠ Decrypted file too small — key mismatch?"
+                _run_fallback_installer
+            else
+                rm -f /tmp/ofmpath_install.sh.enc
+                chmod +x /tmp/ofmpath_install.sh
+                echo "[OFM] Executing inner installer..."
+                # CRITICAL: explicitly pass env to child so nothing is lost
+                env OFMPATH_TOKEN="$OFMPATH_TOKEN" \
+                    OFMPATH_PAYLOAD_KEY="$OFMPATH_PAYLOAD_KEY" \
+                    OFMPATH_SUPA_URL="$OFMPATH_SUPA_URL" \
+                    OFMPATH_BUCKET="$OFMPATH_BUCKET" \
+                    COMFYUI_DIR="$COMFYUI_DIR" \
+                    CUSTOM_NODES_DIR="$CUSTOM_NODES_DIR" \
+                    PIP="$PIP" \
+                    bash /tmp/ofmpath_install.sh
+                local EC=$?
+                echo "[OFM] Inner installer exit code: $EC"
+                if [ $EC -ne 0 ]; then
+                    echo "[OFM] ⚠ Inner installer returned non-zero — some installs may have failed"
+                fi
+            fi
+        else
+            echo "[OFM] ⚠ Decrypt failed — trying fallback"
+            _run_fallback_installer
+        fi
+    else
+        echo "[OFM] ⚠ Bucket fetch failed — trying fallback"
+        _run_fallback_installer
+    fi
+
+    rm -f /tmp/ofmpath_install.sh
+    echo "[OFM] ✓ Deploy stack phase complete"
+
+    # Post-install sanity: count what was actually installed
+    local NODE_COUNT=$(ls -1 "$CUSTOM_NODES_DIR" 2>/dev/null | wc -l)
+    local WF_COUNT=$(find "$COMFYUI_DIR/user/default/workflows/" -maxdepth 1 -iname "*.json" 2>/dev/null | wc -l)
+    echo "[OFM] Installed: $NODE_COUNT custom nodes · $WF_COUNT workflows"
+}
+
+_run_fallback_installer() {
+    echo "[OFM] Attempting fallback from GitHub..."
+    local URL="https://raw.githubusercontent.com/st4vz/oiujdsa/refs/heads/main/ofmpath_install.sh"
+    if curl -fsSL --max-time 30 "$URL" -o /tmp/ofmpath_fallback.sh 2>/dev/null; then
+        chmod +x /tmp/ofmpath_fallback.sh
+        env OFMPATH_TOKEN="$OFMPATH_TOKEN" \
+            OFMPATH_PAYLOAD_KEY="$OFMPATH_PAYLOAD_KEY" \
+            OFMPATH_SUPA_URL="$OFMPATH_SUPA_URL" \
+            OFMPATH_BUCKET="$OFMPATH_BUCKET" \
+            COMFYUI_DIR="$COMFYUI_DIR" \
+            CUSTOM_NODES_DIR="$CUSTOM_NODES_DIR" \
+            PIP="$PIP" \
+            bash /tmp/ofmpath_fallback.sh
+        echo "[OFM] Fallback exit code: $?"
+        rm -f /tmp/ofmpath_fallback.sh
+    else
+        echo "[OFM] ❌ Fallback fetch failed — deployment incomplete"
+    fi
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 7 — UI LOCKDOWN
+# ═══════════════════════════════════════════════════════════════════════════
+_lockdown_ui() {
+    echo "[PROGRESS: 92]"
+    echo "=========================================="
+    echo "[OFM] Applying UI Lockdown..."
+
+    local FRONTEND_DIR
+    FRONTEND_DIR=$(python3 -c "import comfyui_frontend_package, os; print(os.path.dirname(comfyui_frontend_package.__file__))" 2>/dev/null)
+    local FRONTEND_HTML="${FRONTEND_DIR}/static/index.html"
+
+    if [ -f "$FRONTEND_HTML" ] && ! grep -q "OFMPATH-BOOT" "$FRONTEND_HTML"; then
+        export FRONTEND_HTML
+        python3 <<'PYINJECT'
+import os
+p = os.environ.get("FRONTEND_HTML", "")
+if not os.path.isfile(p): raise SystemExit(0)
+boot = '<script data-id="OFMPATH-BOOT">document.addEventListener("contextmenu",function(e){var t=e.target;if(t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}},true);document.addEventListener("keydown",function(e){var k=e.key?e.key.toLowerCase():"";if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&"ijc".includes(k))||(e.ctrlKey&&k==="u")||(e.ctrlKey&&"sepa".includes(k))){e.preventDefault();e.stopImmediatePropagation()}},true);setInterval(function(){var t=performance.now();debugger;if(performance.now()-t>100){document.body.innerHTML="";window.location.href="about:blank";setTimeout(function(){window.close()},10);}},500);</script>'
+with open(p, 'r') as f: html = f.read()
+html = html.replace("<head>", "<head>" + boot, 1)
+with open(p, 'w') as f: f.write(html)
+print("[OFM] ✓ UI boot protection injected")
+PYINJECT
+    fi
+
+    if [ -f /etc/supervisor/conf.d/comfyui.conf ] && ! grep -q "disable-metadata" /etc/supervisor/conf.d/comfyui.conf; then
+        sed -i 's/--listen 0.0.0.0/--listen 0.0.0.0 --disable-metadata/g' /etc/supervisor/conf.d/comfyui.conf
+        supervisorctl update >/dev/null 2>&1 || true
+        echo "[OFM] ✓ --disable-metadata injected"
+    fi
+
+    for d in "$COMFYUI_DIR/output" "$COMFYUI_DIR/input"; do
+        [ -d "$d" ] && find "$d" \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \
+            -o -iname "*.webp" -o -iname "*.mp4" -o -iname "*.webm" \) \
+            -exec exiftool -overwrite_original -all= {} \; 2>/dev/null || true
+    done
+    echo "[OFM] ✓ UI Lockdown complete"
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 8 — ENSURE COMFYUI STOPPED
+# ═══════════════════════════════════════════════════════════════════════════
+_ensure_comfyui_stopped() {
+    supervisorctl stop comfyui >/dev/null 2>&1 || true
+    pkill -f "ComfyUI/main.py" 2>/dev/null || true
+    sleep 2
+
+    local port_pids
+    port_pids=$(fuser 8188/tcp 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true)
+    for _pid in $port_pids; do
+        [ "$_pid" = "${PRELOADER_PID:-}" ] && continue
+        kill -9 "$_pid" 2>/dev/null || true
+    done
+
+    local r=0
+    while pgrep -f "ComfyUI/main.py" > /dev/null 2>&1; do
+        r=$((r+1))
+        if [ $r -ge 15 ]; then pkill -9 -f "ComfyUI/main.py" 2>/dev/null; break; fi
+        sleep 2
+    done
+    echo "[OFM] ✓ ComfyUI stopped"
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 9 — GRACEFUL HANDOFF
+# ═══════════════════════════════════════════════════════════════════════════
+_finalize() {
+    echo "[PROGRESS: 98]"
+    echo "=========================================="
+    echo "     SYSTEM FULLY OPERATIONAL             "
+    echo "=========================================="
+
+    # Snapshot the final log to a permanent location BEFORE cleanup
+    cp /tmp/ofmpath_loading/install.log "$WORKSPACE/ofmpath_install.log" 2>/dev/null || true
+
+    echo "SYSTEM FULLY OPERATIONAL" >> /tmp/ofmpath_loading/install.log 2>/dev/null || true
+    echo "READY" > /tmp/ofmpath_loading/ready; sync
+
+    sleep 5
+
+    echo "[OFM] Shutting down preloader..."
+    [ -n "${PRELOADER_PID:-}" ] && { kill "$PRELOADER_PID" 2>/dev/null; sleep 1; kill -9 "$PRELOADER_PID" 2>/dev/null; }
+    pkill -f "http.server 8188" 2>/dev/null || true
+    sleep 1
+    fuser -k 8188/tcp >/dev/null 2>&1 || true
+    sleep 1
+
+    local r=0
+    while fuser 8188/tcp >/dev/null 2>&1; do
+        r=$((r+1))
+        if [ $r -ge 10 ]; then
+            fuser -k -9 8188/tcp >/dev/null 2>&1
+            pkill -9 -f "http.server 8188" 2>/dev/null
+            sleep 2; break
+        fi
+        sleep 2
+    done
+    echo "[OFM] ✓ Port 8188 clear"
+
+    supervisorctl restart comfyui >/dev/null 2>&1 || supervisorctl start comfyui >/dev/null 2>&1 || true
+
+    local retries=0 max_wait=120
+    while true; do
+        retries=$((retries+1))
+        [ $retries -ge $max_wait ] && { echo "[OFM] ⚠ ComfyUI did not respond in ${max_wait}s"; break; }
+        local code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:8188/system_stats 2>/dev/null || echo 000)
+        [ "$code" = "200" ] && { echo "[OFM] ✓ ComfyUI online (${retries}s)"; break; }
+        if [ $retries -gt 30 ]; then
+            local rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://localhost:8188/ 2>/dev/null || echo 000)
+            [ "$rc" = "200" ] && { echo "[OFM] ✓ ComfyUI root responding (${retries}s)"; break; }
+        fi
+        sleep 1
+    done
+
+    # Preserve logs — do NOT rm -rf /tmp/ofmpath_loading
+    # The install.log is also saved to $WORKSPACE/ofmpath_install.log for debugging.
+
+    echo "[OFM] ═══════════════════════════════════"
+    echo "[OFM] Deployment complete — debug log: $WORKSPACE/ofmpath_install.log"
+    echo "[OFM] ═══════════════════════════════════"
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ERROR PAGE  (swaps preloader HTML, sleeps forever — HALTS execution)
+# ═══════════════════════════════════════════════════════════════════════════
+_show_error_page() {
+    local MSG="$1"
+    supervisorctl stop comfyui >/dev/null 2>&1 || true
+
+    cat > /tmp/ofmpath_loading/index.html << ERRHTML
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>OFM PATH — Access Denied</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0008; color:#e0e0e0; font-family:'JetBrains Mono',monospace;
+         display:flex; justify-content:center; align-items:center; min-height:100vh; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none;
+                 background:radial-gradient(ellipse at 50% 50%, rgba(255,60,80,0.05) 0%, transparent 60%); }
+  body::after { content:''; position:fixed; inset:0; pointer-events:none;
+                background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0,rgba(0,0,0,.18) 1px,transparent 1px,transparent 3px); }
+  .box { position:relative; text-align:center; padding:50px 45px; max-width:500px;
+         border:1px solid rgba(255,68,102,0.3); border-radius:4px;
+         background:rgba(20,5,8,0.85); backdrop-filter:blur(18px); box-shadow:0 0 80px rgba(255,68,102,0.1); }
+  h1 { color:#ff4466; font-size:22px; margin-bottom:16px; letter-spacing:2px; }
+  p { color:#aaa; font-size:13px; line-height:1.8; margin-bottom:12px; }
+  .detail { background:rgba(255,68,102,0.06); border:1px solid rgba(255,68,102,0.15);
+            padding:14px; border-radius:3px; margin-top:20px;
+            font-size:12px; color:#ff8899; line-height:1.6; }
+  .footer { margin-top:24px; font-size:10px; color:rgba(255,255,255,0.18); letter-spacing:3px; }
+</style></head><body>
+<div class="box">
+  <h1>⛔ ACCESS DENIED</h1>
+  <p>${MSG}</p>
+  <div class="detail">Check your OFMPATH_TOKEN env var or subscription status.</div>
+  <div class="footer">OFM PATH · SZN VAULT</div>
+</div>
+</body></html>
+ERRHTML
+
+    echo "[OFM] Error page deployed — blocking forever"
+    # Trap signals so nothing wakes us up
+    trap '' SIGTERM SIGINT
+    while true; do sleep 3600; done
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  EXECUTION
+# ═══════════════════════════════════════════════════════════════════════════
+_start_preloader
+_install_deps
+_validate_token
+_wait_for_comfy
+_deploy_stack
+_ensure_comfyui_stopped
+_lockdown_ui
+_ensure_comfyui_stopped
+_finalize
