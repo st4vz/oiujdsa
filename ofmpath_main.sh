@@ -46,68 +46,66 @@ _start_preloader() {
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { height:100%; overflow:hidden; }
-  body { background:#0a0a0f; color:#00ff88; font-family:'JetBrains Mono','Courier New',monospace;
+  body { background:#0a0a0a; color:#f0e6cf; font-family:'JetBrains Mono','Courier New',monospace;
          display:flex; justify-content:center; align-items:center; min-height:100vh; position:relative; }
   body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:2;
-                 background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0,rgba(0,0,0,.18) 1px,transparent 1px,transparent 3px); }
+                 background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0,rgba(0,0,0,.35) 1px,transparent 1px,transparent 3px); }
   body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:1;
-                background:radial-gradient(ellipse at 50% 50%, rgba(0,255,136,0.05) 0%, transparent 60%); }
+                background:radial-gradient(ellipse at 50% 50%, rgba(240,230,207,0.04) 0%, transparent 65%); }
   .wrap { position:relative; z-index:10; max-width:640px; width:92%; padding:36px 40px;
-          background:rgba(10,12,16,0.75); border:1px solid rgba(0,255,136,0.22); border-radius:4px;
+          background:rgba(15,12,8,0.7); border:1px solid rgba(240,230,207,0.18); border-radius:4px;
           backdrop-filter:blur(8px); text-align:center;
-          box-shadow:0 0 60px rgba(0,255,136,0.08), inset 0 0 0 1px rgba(0,255,136,0.08);
+          box-shadow:0 0 60px rgba(240,230,207,0.05), inset 0 0 0 1px rgba(240,230,207,0.06);
           animation:slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
   @keyframes slideUp { from { opacity:0; transform:translateY(16px);} to { opacity:1; transform:translateY(0);} }
-  .brand { font-size:11px; letter-spacing:4px; color:#00ff88; opacity:.55; margin-bottom:6px; }
-  pre.ascii { font-size:11px; line-height:1.2; color:#00ff88;
-              text-shadow:0 0 10px rgba(0,255,136,.6); margin:0 0 20px; white-space:pre;
+  .brand { font-size:11px; letter-spacing:4px; color:#f0e6cf; opacity:.6; margin-bottom:8px; }
+  pre.ascii { font-size:11px; line-height:1.2; color:#faf1d6;
+              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 20px; white-space:pre;
               font-family:'JetBrains Mono','Courier New',monospace; }
-  .version { font-size:10px; color:#00ff88; opacity:.5; letter-spacing:3px; margin-bottom:24px; text-transform:uppercase; }
+  .version { font-size:10px; color:#f0e6cf; opacity:.5; letter-spacing:3px; margin-bottom:24px; text-transform:uppercase; }
   .status-badge { display:inline-flex; align-items:center; gap:10px; padding:7px 18px;
-                  background:rgba(0,255,136,0.06); border:1px solid rgba(0,255,136,0.25); border-radius:3px;
-                  font-size:12px; color:#88ffcc; margin-bottom:18px; letter-spacing:0.5px; }
-  .dot { width:8px; height:8px; border-radius:50%; background:#00ff88;
-         animation:dotPulse 1.3s infinite; box-shadow:0 0 8px #00ff88; }
+                  background:rgba(240,230,207,0.05); border:1px solid rgba(240,230,207,0.22); border-radius:3px;
+                  font-size:12px; color:#faf1d6; margin-bottom:18px; letter-spacing:0.5px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#f5efd6;
+         animation:dotPulse 1.3s infinite; box-shadow:0 0 8px #f5efd6; }
   @keyframes dotPulse { 0%,100% { transform:scale(.8); opacity:.6;} 50% { transform:scale(1.25); opacity:1;} }
-  .bar-track { width:100%; height:5px; background:rgba(0,255,136,0.08); border-radius:2px;
-               overflow:hidden; margin-bottom:10px; box-shadow:inset 0 0 0 1px rgba(0,255,136,0.15); }
-  .bar-fill { height:100%; width:0%; background:linear-gradient(90deg,#00ff88,#00ccff);
-              transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 12px #00ff88; }
-  .status-line { font-size:11px; color:#4a8a6a; min-height:16px; margin-bottom:24px;
-                 font-family:'JetBrains Mono',monospace; letter-spacing:0.3px; }
+  .bar-track { width:100%; height:5px; background:rgba(240,230,207,0.08); border-radius:2px;
+               overflow:hidden; margin-bottom:24px; box-shadow:inset 0 0 0 1px rgba(240,230,207,0.15); }
+  .bar-fill { height:100%; width:0%; background:linear-gradient(90deg,#f0e6cf,#faf1d6);
+              transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 12px rgba(240,230,207,0.5); }
   .game { margin-bottom:16px; border-radius:3px; overflow:hidden;
-          background:rgba(0,0,0,0.4); border:1px solid rgba(0,255,136,0.2); padding:14px; text-align:center; }
-  #snake { background:#030308; border-radius:2px; border:1px solid rgba(0,255,136,0.15);
+          background:rgba(0,0,0,0.4); border:1px solid rgba(240,230,207,0.18); padding:14px; text-align:center; }
+  #snake { background:#030303; border-radius:2px; border:1px solid rgba(240,230,207,0.12);
            display:block; margin:0 auto; image-rendering:pixelated; }
-  #snake-score { font-size:11px; color:#00ff88; font-weight:600; margin-top:8px; letter-spacing:1px; }
-  .game-hint { font-size:9px; color:rgba(0,255,136,0.35); margin-top:4px; letter-spacing:2px; text-transform:uppercase; }
-  .tracker { width:100%; background:rgba(0,255,136,0.03); border:1px dashed rgba(0,255,136,0.3);
+  #snake-score { font-size:11px; color:#f0e6cf; font-weight:600; margin-top:8px; letter-spacing:1px; }
+  .game-hint { font-size:9px; color:rgba(240,230,207,0.35); margin-top:4px; letter-spacing:2px; text-transform:uppercase; }
+  .tracker { width:100%; background:rgba(240,230,207,0.03); border:1px dashed rgba(240,230,207,0.28);
              border-radius:3px; padding:14px; display:flex; flex-direction:column; gap:10px; margin-bottom:6px; }
-  .tracker-header { font-size:11px; color:#88ffcc; letter-spacing:0.5px;
+  .tracker-header { font-size:11px; color:#faf1d6; letter-spacing:0.5px;
                     display:flex; justify-content:space-between; }
   .blocks { display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-start; }
-  .block { width:14px; height:14px; border-radius:2px; background:rgba(0,255,136,0.06);
-           border:1px solid rgba(0,255,136,0.2); transition:all 0.3s; position:relative; overflow:hidden; }
-  .block.filled { background:#00ff88; border-color:#00ff88; box-shadow:0 0 6px rgba(0,255,136,0.5); }
+  .block { width:14px; height:14px; border-radius:2px; background:rgba(240,230,207,0.06);
+           border:1px solid rgba(240,230,207,0.2); transition:all 0.3s; position:relative; overflow:hidden; }
+  .block.filled { background:#f0e6cf; border-color:#f0e6cf; box-shadow:0 0 6px rgba(240,230,207,0.5); }
   .block.loading::after { content:''; position:absolute; bottom:0; left:0; right:0; height:50%;
-                          background:rgba(0,255,136,0.4); animation:fill 1s infinite alternate; }
+                          background:rgba(240,230,207,0.4); animation:fill 1s infinite alternate; }
   @keyframes fill { 0% { height:10%;} 100% { height:90%;} }
-  .current { font-size:10px; color:rgba(136,255,204,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .footer { font-size:10px; color:rgba(0,255,136,0.25); letter-spacing:3px; margin-top:12px; text-transform:uppercase; }
-  .error-state .bar-fill { background:#ff4466 !important; box-shadow:0 0 12px #ff4466; }
-  .error-state .status-badge { color:#ff4466; border-color:rgba(255,68,102,0.4); }
-  .error-state .dot { background:#ff4466; box-shadow:0 0 8px #ff4466; }
+  .current { font-size:10px; color:rgba(250,241,214,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .footer { font-size:10px; color:rgba(240,230,207,0.25); letter-spacing:3px; margin-top:12px; text-transform:uppercase; }
+  .error-state .bar-fill { background:#c97a5f !important; box-shadow:0 0 12px #c97a5f; }
+  .error-state .status-badge { color:#c97a5f; border-color:rgba(201,122,95,0.4); }
+  .error-state .dot { background:#c97a5f; box-shadow:0 0 8px #c97a5f; }
   #refresh-prompt { display:none; margin-top:18px; }
-  .btn { background:linear-gradient(135deg,#00ff88,#00ccff); color:#0a0a0f;
+  .btn { background:linear-gradient(135deg,#f0e6cf,#faf1d6); color:#0a0a0a;
          border:none; padding:11px 30px; border-radius:3px; font-size:12px; font-weight:600;
          cursor:pointer; letter-spacing:2px; font-family:'JetBrains Mono',monospace; text-transform:uppercase;
-         box-shadow:0 0 20px rgba(0,255,136,0.3); transition:all .15s; }
-  .btn:hover { transform:translateY(-1px); box-shadow:0 0 30px rgba(0,255,136,0.5); }
+         box-shadow:0 0 20px rgba(240,230,207,0.3); transition:all .15s; }
+  .btn:hover { transform:translateY(-1px); box-shadow:0 0 30px rgba(240,230,207,0.5); }
 </style>
 </head>
 <body>
   <div class="wrap" id="main">
-    <div class="brand">OFM PATH 智慧通路</div>
+    <div class="brand">OFMPATH.COM</div>
     <pre class="ascii">
  ██████╗ ███████╗███╗   ███╗    ██████╗  █████╗ ████████╗██╗  ██╗
 ██╔═══██╗██╔════╝████╗ ████║    ██╔══██╗██╔══██╗╚══██╔══╝██║  ██║
@@ -115,12 +113,11 @@ _start_preloader() {
 ██║   ██║██╔══╝  ██║╚██╔╝██║    ██╔═══╝ ██╔══██║   ██║   ██╔══██║
 ╚██████╔╝██║     ██║ ╚═╝ ██║    ██║     ██║  ██║   ██║   ██║  ██║
  ╚═════╝ ╚═╝     ╚═╝     ╚═╝    ╚═╝     ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝</pre>
-    <div class="version">V1 · SZN VAULT</div>
+    <div class="version">V1 · OFM PATH</div>
     <div class="status-badge" id="status-badge">
       <span class="dot"></span><span id="status-text">Initializing environment...</span>
     </div>
     <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
-    <div class="status-line" id="status-line">▸ Connecting to SZN VAULT servers...</div>
     <div class="game">
       <canvas id="snake" width="480" height="200"></canvas>
       <div id="snake-score">◈ 0</div>
@@ -135,10 +132,10 @@ _start_preloader() {
       <div class="current" id="current">▸ Awaiting...</div>
     </div>
     <div id="refresh-prompt">
-      <p style="color:#88ffcc; font-size:12px; margin-bottom:12px;">▸ Deployment complete</p>
+      <p style="color:#faf1d6; font-size:12px; margin-bottom:12px;">▸ Deployment complete</p>
       <button class="btn" onclick="location.reload()">Launch Interface</button>
     </div>
-    <div class="footer">SECURE DEPLOYMENT · SZN VAULT</div>
+    <div class="footer">SECURE DEPLOYMENT · OFM PATH</div>
   </div>
 <script>
 document.addEventListener("contextmenu", e => e.preventDefault(), true);
@@ -174,10 +171,10 @@ function parseModelProgress(text) {
   document.getElementById("model-count").textContent = done + " / " + total;
   if (current && done < total) {
     const hex = "0x" + Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6,'0');
-    document.getElementById("current").textContent = "▸ Syncing " + hex + "...";
+    document.getElementById("current").textContent = "\u25b8 Syncing " + hex + "...";
     document.getElementById("speed").textContent = (Math.random() * 18 + 6).toFixed(1) + " MB/s";
   } else if (done >= total && total > 0) {
-    document.getElementById("current").textContent = "▸ All weights synced ✓";
+    document.getElementById("current").textContent = "\u25b8 All weights synced \u2713";
     document.getElementById("speed").textContent = "";
   }
   modelState.lastDone = done; modelState.total = total; modelState.done = done;
@@ -209,27 +206,15 @@ async function poll() {
     const res = await fetch("install.log?t=" + Date.now());
     if (!res.ok) return;
     const text = await res.text();
-    const bar = document.getElementById("bar"), status = document.getElementById("status-text"), line = document.getElementById("status-line");
+    const bar = document.getElementById("bar"), status = document.getElementById("status-text");
     const lines = text.split("\n").filter(l => l.trim());
-    if (lines.length) {
-      let raw = lines[lines.length-1].substring(0, 80);
-      if (raw.includes("READY") || raw.includes("FULLY OPERATIONAL")) {
-        line.textContent = "▸ Finalizing deployment...";
-      } else {
-        const chars = "████▓▓▒▒░░0123456789ABCDEF";
-        let obf = "";
-        for (let k=0; k<Math.min(raw.length, 24); k++) obf += chars.charAt(Math.floor(Math.random()*chars.length));
-        const hex = "0x" + Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6, "0");
-        line.textContent = "▸ [" + hex + "] " + obf + (raw.length > 24 ? "..." : "");
-      }
-    }
     let pct = 0;
     for (let i = lines.length - 1; i >= 0; i--) { const m = lines[i].match(/\[PROGRESS:\s*(\d+)\]/); if (m) { pct = parseInt(m[1]); break; } }
     if (pct > 0) bar.style.width = pct + "%";
     parseModelProgress(text);
     if (text.includes("ACCESS DENIED") || text.includes("TOKEN REJECTED") || text.includes("LICENSE DENIED") || text.includes("AUTH ERROR") || text.includes("CRITICAL HALT")) {
       bar.style.width = "100%"; document.getElementById("main").classList.add("error-state");
-      status.textContent = "⛔ Access denied"; line.textContent = "Check OFMPATH_TOKEN. Retrying...";
+      status.textContent = "\u26d4 Access denied";
       setTimeout(() => location.reload(), 10000); return;
     } else if (text.includes("SYSTEM FULLY OPERATIONAL") && !handoffStarted) {
       handoffStarted = true; startHandoff();
@@ -258,19 +243,19 @@ setInterval(poll, 1500); poll();
     while (snake.some(s => s.x===f.x && s.y===f.y)); return f;
   }
   function draw() {
-    ctx.fillStyle = '#030308'; ctx.fillRect(0, 0, can.width, can.height);
-    ctx.strokeStyle = 'rgba(0,255,136,0.04)'; ctx.lineWidth = 0.5;
+    ctx.fillStyle = '#030303'; ctx.fillRect(0, 0, can.width, can.height);
+    ctx.strokeStyle = 'rgba(240,230,207,0.04)'; ctx.lineWidth = 0.5;
     for (let x=0; x<can.width; x+=G) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,can.height); ctx.stroke(); }
     for (let y=0; y<can.height; y+=G) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(can.width,y); ctx.stroke(); }
-    ctx.save(); ctx.shadowColor = '#ff4466'; ctx.shadowBlur = 10; ctx.fillStyle = '#ff4466';
+    ctx.save(); ctx.shadowColor = '#c97a5f'; ctx.shadowBlur = 10; ctx.fillStyle = '#c97a5f';
     ctx.fillRect(food.x*G+2, food.y*G+2, G-4, G-4); ctx.restore();
     snake.forEach((cell, i) => {
       if (i === 0) {
-        ctx.save(); ctx.shadowColor = '#00ff88'; ctx.shadowBlur = 8; ctx.fillStyle = '#00ff88';
+        ctx.save(); ctx.shadowColor = '#f5efd6'; ctx.shadowBlur = 8; ctx.fillStyle = '#f5efd6';
         ctx.fillRect(cell.x*G+1, cell.y*G+1, G-2, G-2); ctx.restore();
       } else {
         const a = 1 - (i/snake.length)*0.6;
-        ctx.fillStyle = 'rgba(0,255,136,' + a + ')';
+        ctx.fillStyle = 'rgba(240,230,207,' + a + ')';
         ctx.fillRect(cell.x*G+1, cell.y*G+1, G-2, G-2);
       }
     });
@@ -284,12 +269,12 @@ setInterval(poll, 1500); poll();
       alive = false;
       setTimeout(() => { snake = [{x:5, y:Math.floor(ROWS/2)}]; dir = {x:1, y:0};
         score = 0; alive = true; food = newFood();
-        document.getElementById('snake-score').textContent = '◈ 0'; }, 1500);
+        document.getElementById('snake-score').textContent = '\u25c8 0'; }, 1500);
       return;
     }
     snake.unshift(head);
     if (head.x===food.x && head.y===food.y) {
-      score++; document.getElementById('snake-score').textContent = '◈ ' + score; food = newFood();
+      score++; document.getElementById('snake-score').textContent = '\u25c8 ' + score; food = newFood();
     } else { snake.pop(); }
     draw();
   }
@@ -302,6 +287,7 @@ setInterval(poll, 1500); poll();
 </script>
 </body>
 </html>
+
 PRELOADER_HTML
 
     cd /tmp/ofmpath_loading || { echo "[OFM] ⚠ cannot cd /tmp/ofmpath_loading"; return 1; }
@@ -712,7 +698,7 @@ _show_error_page() {
   <h1>⛔ ACCESS DENIED</h1>
   <p>${MSG}</p>
   <div class="detail">Check your OFMPATH_TOKEN env var or subscription status.</div>
-  <div class="footer">OFM PATH · SZN VAULT</div>
+  <div class="footer">OFMPATH.COM</div>
 </div>
 </body></html>
 ERRHTML
