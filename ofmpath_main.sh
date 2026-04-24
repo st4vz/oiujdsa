@@ -45,62 +45,95 @@ _start_preloader() {
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { height:100%; overflow:hidden; }
+  html,body { height:100%; overflow-x:hidden; }
   body { background:#0a0a0a; color:#f0e6cf; font-family:'JetBrains Mono','Courier New',monospace;
-         display:flex; justify-content:center; align-items:center; min-height:100vh; position:relative; }
+         display:flex; justify-content:center; align-items:flex-start; min-height:100vh; position:relative;
+         padding:32px 16px; }
   body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:2;
                  background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0,rgba(0,0,0,.35) 1px,transparent 1px,transparent 3px); }
   body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:1;
                 background:radial-gradient(ellipse at 50% 50%, rgba(240,230,207,0.04) 0%, transparent 65%); }
-  .wrap { position:relative; z-index:10; max-width:640px; width:92%; padding:36px 40px;
+  .wrap { position:relative; z-index:10; max-width:720px; width:100%; padding:32px 36px;
           background:rgba(15,12,8,0.7); border:1px solid rgba(240,230,207,0.18); border-radius:4px;
-          backdrop-filter:blur(8px); text-align:center;
+          backdrop-filter:blur(8px);
           box-shadow:0 0 60px rgba(240,230,207,0.05), inset 0 0 0 1px rgba(240,230,207,0.06);
           animation:slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
   @keyframes slideUp { from { opacity:0; transform:translateY(16px);} to { opacity:1; transform:translateY(0);} }
-  .brand { font-size:11px; letter-spacing:4px; color:#f0e6cf; opacity:.6; margin-bottom:8px; }
+  .brand { text-align:center; font-size:11px; letter-spacing:4px; color:#f0e6cf; opacity:.6; margin-bottom:8px; }
   pre.ascii { font-size:11px; line-height:1.2; color:#faf1d6;
-              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 20px; white-space:pre;
+              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 18px; white-space:pre; text-align:center;
               font-family:'JetBrains Mono','Courier New',monospace; }
-  .version { font-size:10px; color:#f0e6cf; opacity:.5; letter-spacing:3px; margin-bottom:24px; text-transform:uppercase; }
-  .status-badge { display:inline-flex; align-items:center; gap:10px; padding:7px 18px;
+  .version { text-align:center; font-size:10px; color:#f0e6cf; opacity:.5; letter-spacing:3px; margin-bottom:22px; text-transform:uppercase; }
+  .header-row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .status-badge { display:inline-flex; align-items:center; gap:10px; padding:7px 16px;
                   background:rgba(240,230,207,0.05); border:1px solid rgba(240,230,207,0.22); border-radius:3px;
-                  font-size:12px; color:#faf1d6; margin-bottom:18px; letter-spacing:0.5px; }
+                  font-size:12px; color:#faf1d6; letter-spacing:0.4px; }
   .dot { width:8px; height:8px; border-radius:50%; background:#f5efd6;
          animation:dotPulse 1.3s infinite; box-shadow:0 0 8px #f5efd6; }
   @keyframes dotPulse { 0%,100% { transform:scale(.8); opacity:.6;} 50% { transform:scale(1.25); opacity:1;} }
-  .bar-track { width:100%; height:5px; background:rgba(240,230,207,0.08); border-radius:2px;
-               overflow:hidden; margin-bottom:24px; box-shadow:inset 0 0 0 1px rgba(240,230,207,0.15); }
+  .elapsed { font-family:'JetBrains Mono',monospace; font-size:12px; color:rgba(240,230,207,0.7); letter-spacing:1px; }
+  .bar-track { width:100%; height:4px; background:rgba(240,230,207,0.08); border-radius:2px;
+               overflow:hidden; margin-bottom:6px; box-shadow:inset 0 0 0 1px rgba(240,230,207,0.15); }
   .bar-fill { height:100%; width:0%; background:linear-gradient(90deg,#f0e6cf,#faf1d6);
-              transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 12px rgba(240,230,207,0.5); }
-  .game { margin-bottom:16px; border-radius:3px; overflow:hidden;
-          background:rgba(0,0,0,0.4); border:1px solid rgba(240,230,207,0.18); padding:14px; text-align:center; }
-  #snake { background:#030303; border-radius:2px; border:1px solid rgba(240,230,207,0.12);
-           display:block; margin:0 auto; image-rendering:pixelated; }
-  #snake-score { font-size:11px; color:#f0e6cf; font-weight:600; margin-top:8px; letter-spacing:1px; }
-  .game-hint { font-size:9px; color:rgba(240,230,207,0.35); margin-top:4px; letter-spacing:2px; text-transform:uppercase; }
-  .tracker { width:100%; background:rgba(240,230,207,0.03); border:1px dashed rgba(240,230,207,0.28);
-             border-radius:3px; padding:14px; display:flex; flex-direction:column; gap:10px; margin-bottom:6px; }
-  .tracker-header { font-size:11px; color:#faf1d6; letter-spacing:0.5px;
-                    display:flex; justify-content:space-between; }
-  .blocks { display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-start; }
-  .block { width:14px; height:14px; border-radius:2px; background:rgba(240,230,207,0.06);
-           border:1px solid rgba(240,230,207,0.2); transition:all 0.3s; position:relative; overflow:hidden; }
-  .block.filled { background:#f0e6cf; border-color:#f0e6cf; box-shadow:0 0 6px rgba(240,230,207,0.5); }
-  .block.loading::after { content:''; position:absolute; bottom:0; left:0; right:0; height:50%;
-                          background:rgba(240,230,207,0.4); animation:fill 1s infinite alternate; }
-  @keyframes fill { 0% { height:10%;} 100% { height:90%;} }
-  .current { font-size:10px; color:rgba(250,241,214,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .footer { font-size:10px; color:rgba(240,230,207,0.25); letter-spacing:3px; margin-top:12px; text-transform:uppercase; }
-  .error-state .bar-fill { background:#c97a5f !important; box-shadow:0 0 12px #c97a5f; }
+              transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 10px rgba(240,230,207,0.4); }
+  .bar-label { display:flex; justify-content:space-between; font-size:10px; color:rgba(240,230,207,0.45);
+               letter-spacing:1px; margin-bottom:22px; text-transform:uppercase; }
+  .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:18px; }
+  .stat { background:rgba(240,230,207,0.04); border:1px solid rgba(240,230,207,0.15); border-radius:3px; padding:12px 10px; }
+  .stat-label { font-size:9px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:6px; }
+  .stat-value { font-size:22px; color:#faf1d6; font-weight:600; line-height:1; }
+  .stat-value .sub { font-size:11px; color:rgba(240,230,207,0.4); }
+  .stat-hint { font-size:9px; color:rgba(240,230,207,0.4); margin-top:4px; letter-spacing:0.5px; }
+  .panel { background:rgba(240,230,207,0.03); border:1px dashed rgba(240,230,207,0.22); border-radius:3px;
+           padding:14px; margin-bottom:14px; }
+  .panel-label { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:12px; }
+  .ladder { display:flex; gap:6px; font-size:10px; }
+  .rung { flex:1; padding:7px 4px; text-align:center; border-radius:2px; transition:all 0.4s; }
+  .rung.future { background:rgba(240,230,207,0.05); color:rgba(240,230,207,0.5); border:1px solid rgba(240,230,207,0.15); }
+  .rung.done { background:rgba(240,230,207,0.12); color:#0a0a0a; font-weight:600; }
+  .rung.active { background:rgba(240,230,207,0.28); color:#0a0a0a; font-weight:600; box-shadow:0 0 10px rgba(240,230,207,0.3); }
+  .rung .code { font-size:8px; letter-spacing:1px; opacity:0.6; display:block; margin-bottom:2px; }
+  .rung.done .code, .rung.active .code { color:rgba(10,10,10,0.6); opacity:1; }
+  .weights-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .weights-count { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; }
+  .weights-speed { font-size:10px; color:#faf1d6; letter-spacing:0.5px; }
+  .blocks { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px; }
+  .block { width:12px; height:12px; border-radius:2px;
+           background:rgba(240,230,207,0.06); border:1px solid rgba(240,230,207,0.2); transition:all 0.3s; }
+  .block.filled { background:#f0e6cf; border-color:#f0e6cf; box-shadow:0 0 6px rgba(240,230,207,0.45); }
+  .block.loading { background:rgba(240,230,207,0.2); border-color:rgba(240,230,207,0.4); animation:dotPulse 1.3s infinite; }
+  .block.failed { background:rgba(201,122,95,0.25); border-color:rgba(201,122,95,0.6); }
+  .current-file { font-size:10px; color:rgba(250,241,214,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .log-panel { background:rgba(0,0,0,0.5); border:1px solid rgba(240,230,207,0.12); border-radius:3px;
+               padding:12px 14px; height:145px; overflow:hidden; position:relative; }
+  .log-label { font-size:9px; color:rgba(240,230,207,0.45); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px; }
+  .log-lines { font-family:'JetBrains Mono',monospace; font-size:10px; line-height:1.55;
+               color:rgba(240,230,207,0.7); overflow:hidden; }
+  .log-line { display:flex; gap:10px; white-space:nowrap; }
+  .log-ts { color:rgba(240,230,207,0.4); min-width:45px; flex-shrink:0; }
+  .log-icon { flex-shrink:0; }
+  .log-icon.ok { color:rgba(250,241,214,0.5); }
+  .log-icon.run { color:#faf1d6; }
+  .log-icon.warn { color:#c97a5f; }
+  .log-icon.info { color:rgba(250,241,214,0.5); }
+  .log-msg { overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
+  .log-line.warn .log-msg { color:rgba(201,122,95,0.85); }
+  .log-line.run .log-msg { color:#faf1d6; }
+  .footer { text-align:center; font-size:10px; color:rgba(240,230,207,0.25); letter-spacing:3px; margin-top:18px; text-transform:uppercase; }
+  .error-state .bar-fill { background:#c97a5f !important; box-shadow:0 0 10px #c97a5f; }
   .error-state .status-badge { color:#c97a5f; border-color:rgba(201,122,95,0.4); }
   .error-state .dot { background:#c97a5f; box-shadow:0 0 8px #c97a5f; }
-  #refresh-prompt { display:none; margin-top:18px; }
+  #refresh-prompt { display:none; margin-top:18px; text-align:center; }
   .btn { background:linear-gradient(135deg,#f0e6cf,#faf1d6); color:#0a0a0a;
          border:none; padding:11px 30px; border-radius:3px; font-size:12px; font-weight:600;
          cursor:pointer; letter-spacing:2px; font-family:'JetBrains Mono',monospace; text-transform:uppercase;
          box-shadow:0 0 20px rgba(240,230,207,0.3); transition:all .15s; }
   .btn:hover { transform:translateY(-1px); box-shadow:0 0 30px rgba(240,230,207,0.5); }
+  @media (max-width: 540px) {
+    .stats { grid-template-columns:repeat(2,1fr); }
+    .ladder { flex-wrap:wrap; }
+    .rung { min-width:45px; }
+  }
 </style>
 </head>
 <body>
@@ -114,180 +147,388 @@ _start_preloader() {
 ╚██████╔╝██║     ██║ ╚═╝ ██║    ██║     ██║  ██║   ██║   ██║  ██║
  ╚═════╝ ╚═╝     ╚═╝     ╚═╝    ╚═╝     ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝</pre>
     <div class="version">V1 · OFM PATH</div>
-    <div class="status-badge" id="status-badge">
-      <span class="dot"></span><span id="status-text">Initializing environment...</span>
+
+    <div class="header-row">
+      <div class="status-badge">
+        <span class="dot"></span><span id="status-text">Initializing environment...</span>
+      </div>
+      <div class="elapsed" id="elapsed">00:00</div>
     </div>
+
     <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
-    <div class="game">
-      <canvas id="snake" width="480" height="200"></canvas>
-      <div id="snake-score">◈ 0</div>
-      <div class="game-hint">← → ↑ ↓ to play · awaiting deployment</div>
+    <div class="bar-label">
+      <span>Overall deployment</span>
+      <span id="pct-text">0%</span>
     </div>
-    <div class="tracker" id="tracker" style="display:none;">
-      <div class="tracker-header">
-        <span>⬡ Syncing weights: <span id="model-count">0 / 0</span></span>
-        <span id="speed"></span>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Nodes</div>
+        <div class="stat-value"><span id="nodes-done">0</span><span class="sub">/28</span></div>
+        <div class="stat-hint">installed</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Models</div>
+        <div class="stat-value"><span id="models-done">0</span><span class="sub">/<span id="models-total">49</span></span></div>
+        <div class="stat-hint">synced</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Data</div>
+        <div class="stat-value"><span id="data-gb">0.0</span><span class="sub"> GB</span></div>
+        <div class="stat-hint">of ~75 GB</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">ETA</div>
+        <div class="stat-value"><span id="eta">&mdash;</span></div>
+        <div class="stat-hint">remaining</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Pipeline</div>
+      <div class="ladder" id="ladder">
+        <div class="rung future" data-phase="A"><span class="code">A</span>Workflows</div>
+        <div class="rung future" data-phase="B"><span class="code">B</span>Nodes</div>
+        <div class="rung future" data-phase="C"><span class="code">C</span>Models</div>
+        <div class="rung future" data-phase="D"><span class="code">D</span>Deploy</div>
+        <div class="rung future" data-phase="E"><span class="code">E</span>Settings</div>
+        <div class="rung future" data-phase="F"><span class="code">F</span>Lockdown</div>
+      </div>
+    </div>
+
+    <div class="panel" id="weights-panel" style="display:none;">
+      <div class="weights-head">
+        <span class="weights-count">Model weights &middot; <span id="weights-count-text">0 / 49</span></span>
+        <span class="weights-speed" id="weights-speed"></span>
       </div>
       <div class="blocks" id="blocks"></div>
-      <div class="current" id="current">▸ Awaiting...</div>
+      <div class="current-file" id="current-file">&blacktriangleright; Awaiting...</div>
     </div>
+
+    <div class="log-panel">
+      <div class="log-label">Event log</div>
+      <div class="log-lines" id="log-lines"></div>
+    </div>
+
     <div id="refresh-prompt">
-      <p style="color:#faf1d6; font-size:12px; margin-bottom:12px;">▸ Deployment complete</p>
+      <p style="color:#faf1d6; font-size:12px; margin-bottom:12px;">&blacktriangleright; Deployment complete</p>
       <button class="btn" onclick="location.reload()">Launch Interface</button>
     </div>
-    <div class="footer">SECURE DEPLOYMENT · OFM PATH</div>
+
+    <div class="footer">SECURE DEPLOYMENT &middot; OFM PATH</div>
   </div>
+
 <script>
-document.addEventListener("contextmenu", e => e.preventDefault(), true);
-document.addEventListener("keydown", e => {
-  const k = e.key ? e.key.toLowerCase() : "";
-  if (e.key === "F12" || (e.ctrlKey && e.shiftKey && "ijc".includes(k)) || (e.ctrlKey && k === "u")) e.preventDefault();
-}, true);
-let modelState = { total: 0, done: 0, rendered: 0, lastDone: 0 };
-function parseModelProgress(text) {
-  const lines = text.split("\n");
-  let total = 0, done = 0, current = '';
-  for (const l of lines) { const m = l.match(/Found\s+(\d+)\s+models/); if (m) total = parseInt(m[1]); }
-  for (const l of lines) {
-    if (l.includes('[SUCCESS]')) done++;
-    const s = l.match(/\[STARTING\]\s*'([^']+)'/); if (s) current = s[1];
+(function () {
+  "use strict";
+  // ── Anti-inspection (soft) ──
+  document.addEventListener("contextmenu", e => e.preventDefault(), true);
+  document.addEventListener("keydown", e => {
+    const k = e.key ? e.key.toLowerCase() : "";
+    if (e.key === "F12" || (e.ctrlKey && e.shiftKey && "ijc".includes(k)) || (e.ctrlKey && k === "u")) e.preventDefault();
+  }, true);
+
+  // ── Elapsed timer ──
+  const startTs = Date.now();
+  function fmtDur(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(s / 60), ss = s % 60;
+    return String(m).padStart(2,'0') + ":" + String(ss).padStart(2,'0');
   }
-  if (total === 0) return;
-  const tracker = document.getElementById("tracker");
-  tracker.style.display = "flex";
-  if (modelState.rendered !== total) {
-    const wrap = document.getElementById("blocks"); wrap.innerHTML = '';
-    for (let i = 0; i < total; i++) {
-      const c = document.createElement("div"); c.className = "block"; c.id = "c" + i; wrap.appendChild(c);
-    }
-    modelState.rendered = total;
+  setInterval(() => {
+    document.getElementById("elapsed").textContent = fmtDur(Date.now() - startTs);
+  }, 1000);
+
+  // ── Weight blocks grid (49 cells) ──
+  const TOTAL_MODELS = 49;
+  const blocksWrap = document.getElementById("blocks");
+  for (let i = 0; i < TOTAL_MODELS; i++) {
+    const c = document.createElement("div");
+    c.className = "block"; c.id = "wb-" + i;
+    blocksWrap.appendChild(c);
   }
-  for (let i = 0; i < total; i++) {
-    const c = document.getElementById("c" + i); if (!c) continue;
-    if (i < done) c.className = "block filled";
-    else if (i === done) c.className = "block loading";
-    else c.className = "block";
-  }
-  document.getElementById("model-count").textContent = done + " / " + total;
-  if (current && done < total) {
-    const hex = "0x" + Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6,'0');
-    document.getElementById("current").textContent = "\u25b8 Syncing " + hex + "...";
-    document.getElementById("speed").textContent = (Math.random() * 18 + 6).toFixed(1) + " MB/s";
-  } else if (done >= total && total > 0) {
-    document.getElementById("current").textContent = "\u25b8 All weights synced \u2713";
-    document.getElementById("speed").textContent = "";
-  }
-  modelState.lastDone = done; modelState.total = total; modelState.done = done;
-}
-let handoffStarted = false;
-setInterval(async () => {
-  try {
-    const r = await fetch("ready?t=" + Date.now());
-    if (r.ok && (await r.text()).trim() === "READY" && !handoffStarted) { handoffStarted = true; startHandoff(); }
-  } catch (_) {}
-}, 2000);
-function startHandoff() {
-  document.getElementById("bar").style.width = "100%";
-  document.getElementById("status-text").textContent = "Starting ComfyUI...";
-  document.getElementById("speed").textContent = "";
-  const ping = setInterval(async () => {
-    try {
-      const r = await fetch("/?_t=" + Date.now(), { cache: "no-store" });
-      if (r.ok) {
-        const html = await r.text();
-        if (html.includes("comfyui") || html.includes("litegraph") || html.length > 5000) { clearInterval(ping); location.reload(); }
-      }
-    } catch (_) {}
-  }, 1500);
-  setTimeout(() => { document.getElementById("refresh-prompt").style.display = "block"; }, 20000);
-}
-async function poll() {
-  try {
-    const res = await fetch("install.log?t=" + Date.now());
-    if (!res.ok) return;
-    const text = await res.text();
-    const bar = document.getElementById("bar"), status = document.getElementById("status-text");
-    const lines = text.split("\n").filter(l => l.trim());
-    let pct = 0;
-    for (let i = lines.length - 1; i >= 0; i--) { const m = lines[i].match(/\[PROGRESS:\s*(\d+)\]/); if (m) { pct = parseInt(m[1]); break; } }
-    if (pct > 0) bar.style.width = pct + "%";
-    parseModelProgress(text);
-    if (text.includes("ACCESS DENIED") || text.includes("TOKEN REJECTED") || text.includes("LICENSE DENIED") || text.includes("AUTH ERROR") || text.includes("CRITICAL HALT")) {
-      bar.style.width = "100%"; document.getElementById("main").classList.add("error-state");
-      status.textContent = "\u26d4 Access denied";
-      setTimeout(() => location.reload(), 10000); return;
-    } else if (text.includes("SYSTEM FULLY OPERATIONAL") && !handoffStarted) {
-      handoffStarted = true; startHandoff();
-    } else {
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const l = lines[i];
-        if (l.includes("UI Lockdown")) { status.textContent = "Applying UI protection..."; break; }
-        else if (l.includes("Deploy workflow")) { status.textContent = "Deploying workflows..."; break; }
-        else if (l.includes("Found") && l.includes("models")) { status.textContent = "Syncing model weights..."; break; }
-        else if (l.includes("custom node") || l.includes("install_node") || l.includes("Phase B")) { status.textContent = "Installing custom nodes..."; break; }
-        else if (l.includes("Validating token")) { status.textContent = "Verifying license..."; break; }
-        else if (l.includes("ComfyUI base") || l.includes("Waiting for")) { status.textContent = "Building ComfyUI core..."; break; }
-      }
-    }
-  } catch (e) {}
-}
-setInterval(poll, 1500); poll();
-(function() {
-  const can = document.getElementById('snake'); if (!can) return;
-  const ctx = can.getContext('2d'); const G = 16;
-  const COLS = Math.floor(can.width / G), ROWS = Math.floor(can.height / G);
-  let snake = [{x:5, y:Math.floor(ROWS/2)}]; let dir = {x:1, y:0};
-  let food = newFood(); let score = 0, alive = true;
-  function newFood() {
-    let f; do { f = {x:Math.floor(Math.random()*COLS), y:Math.floor(Math.random()*ROWS)}; }
-    while (snake.some(s => s.x===f.x && s.y===f.y)); return f;
-  }
-  function draw() {
-    ctx.fillStyle = '#030303'; ctx.fillRect(0, 0, can.width, can.height);
-    ctx.strokeStyle = 'rgba(240,230,207,0.04)'; ctx.lineWidth = 0.5;
-    for (let x=0; x<can.width; x+=G) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,can.height); ctx.stroke(); }
-    for (let y=0; y<can.height; y+=G) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(can.width,y); ctx.stroke(); }
-    ctx.save(); ctx.shadowColor = '#c97a5f'; ctx.shadowBlur = 10; ctx.fillStyle = '#c97a5f';
-    ctx.fillRect(food.x*G+2, food.y*G+2, G-4, G-4); ctx.restore();
-    snake.forEach((cell, i) => {
-      if (i === 0) {
-        ctx.save(); ctx.shadowColor = '#f5efd6'; ctx.shadowBlur = 8; ctx.fillStyle = '#f5efd6';
-        ctx.fillRect(cell.x*G+1, cell.y*G+1, G-2, G-2); ctx.restore();
-      } else {
-        const a = 1 - (i/snake.length)*0.6;
-        ctx.fillStyle = 'rgba(240,230,207,' + a + ')';
-        ctx.fillRect(cell.x*G+1, cell.y*G+1, G-2, G-2);
-      }
+
+  // ── Phase tracker ──
+  const PHASE_ORDER = ["A","B","C","D","E","F"];
+  function setPhase(active) {
+    const idx = PHASE_ORDER.indexOf(active);
+    document.querySelectorAll(".rung").forEach(r => {
+      const p = r.getAttribute("data-phase");
+      const pidx = PHASE_ORDER.indexOf(p);
+      r.classList.remove("future","done","active");
+      if (pidx < idx) r.classList.add("done");
+      else if (pidx === idx) r.classList.add("active");
+      else r.classList.add("future");
     });
   }
-  function step() {
-    if (!alive) return;
-    const head = {x:snake[0].x+dir.x, y:snake[0].y+dir.y};
-    if (head.x < 0) head.x = COLS-1; else if (head.x >= COLS) head.x = 0;
-    if (head.y < 0) head.y = ROWS-1; else if (head.y >= ROWS) head.y = 0;
-    if (snake.some(s => s.x===head.x && s.y===head.y)) {
-      alive = false;
-      setTimeout(() => { snake = [{x:5, y:Math.floor(ROWS/2)}]; dir = {x:1, y:0};
-        score = 0; alive = true; food = newFood();
-        document.getElementById('snake-score').textContent = '\u25c8 0'; }, 1500);
-      return;
+
+  // ── Log tail (keep last 5) ──
+  const LOG_LINES_MAX = 5;
+  const logLines = [];
+  function pushLog(icon, klass, ts, msg) {
+    logLines.push({icon, klass, ts, msg});
+    while (logLines.length > LOG_LINES_MAX) logLines.shift();
+    const el = document.getElementById("log-lines");
+    el.innerHTML = "";
+    for (const l of logLines) {
+      const row = document.createElement("div");
+      row.className = "log-line " + l.klass;
+      row.innerHTML =
+        '<span class="log-ts">'+l.ts+'</span>' +
+        '<span class="log-icon '+l.klass+'">'+l.icon+'</span>' +
+        '<span class="log-msg">'+l.msg+'</span>';
+      el.appendChild(row);
     }
-    snake.unshift(head);
-    if (head.x===food.x && head.y===food.y) {
-      score++; document.getElementById('snake-score').textContent = '\u25c8 ' + score; food = newFood();
-    } else { snake.pop(); }
-    draw();
   }
-  document.addEventListener('keydown', e => {
-    const K = {ArrowLeft:{x:-1,y:0}, ArrowRight:{x:1,y:0}, ArrowUp:{x:0,y:-1}, ArrowDown:{x:0,y:1}};
-    if (K[e.key]) { const d = K[e.key]; if (d.x !== -dir.x || d.y !== -dir.y) dir = d; e.preventDefault(); }
-  });
-  draw(); setInterval(step, 110);
+
+  // ── Model size estimates (GB) — approximate so "Data" shows realistic growth ──
+  // Weighted by what actually downloads. Total ≈ 75 GB ish. Maps by LABEL from [STARTING] 'label'.
+  const MODEL_SIZES = {
+    z_image_bf16: 12, z_image_fp8: 7, wan_diffusion: 27,
+    qwen3_4b: 4.2, umt5xxl: 5.1, text_enc: 2.5,
+    clip_vision_k: 1.3, clip_vision_h: 1.3,
+    vae_ae: 0.3, vae_wan: 0.5,
+    ctrl_wan: 1.3, ctrl_zimg: 0.9,
+    ckpt_detect: 3.0,
+    lora_real: 0.15, lora_xxx: 0.15, lora_gpu: 0.15, lora_wanfun: 0.8,
+    lora_light: 0.4, lora_pusa: 0.5, lora_wanrw: 0.6,
+    det_yolo: 0.06, det_vitpose_data: 1.2, det_vitpose_model: 0.4,
+    sam_vit_b: 0.4, upscaler: 0.07,
+    bbox_face: 0.023, bbox_body: 0.11, bbox_breast: 0.023, bbox_nipples: 0.023,
+    bbox_vagina: 0.023, bbox_ass: 0.023, bbox_eyes_v2: 0.023, bbox_eyes: 0.023,
+    bbox_faces: 0.023, bbox_hand: 0.023, bbox_foot: 0.05,
+    qwen_added: 0.00001, qwen_chat: 0.00001, qwen_config: 0.00001, qwen_gen: 0.00001,
+    qwen_merges: 0.002, qwen_idx: 0.00005, qwen_pre: 0.00001, qwen_spc: 0.00001,
+    qwen_tok: 0.012, qwen_tokcfg: 0.00001, qwen_vocab: 0.003,
+    qwen_shard1: 4.0, qwen_shard2: 4.0,
+  };
+
+  // ── Main state parsed from install.log ──
+  const state = {
+    nodesDone: 0, modelsDone: 0, modelsFailed: 0,
+    pct: 0, phase: null,
+    currentModel: null,
+    lastLogSize: 0,
+    recentBytesPerSec: 0,
+    lastModelTs: null, lastModelLabel: null,
+    loggedLines: new Set(),
+    handoffStarted: false,
+  };
+
+  function nowHHMM() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2,'0') + ":" + String(d.getMinutes()).padStart(2,'0');
+  }
+
+  // ── Handoff detection ──
+  setInterval(async () => {
+    try {
+      const r = await fetch("ready?t=" + Date.now());
+      if (r.ok && (await r.text()).trim() === "READY" && !state.handoffStarted) {
+        state.handoffStarted = true; startHandoff();
+      }
+    } catch (_) {}
+  }, 2000);
+
+  function startHandoff() {
+    document.getElementById("bar").style.width = "100%";
+    document.getElementById("pct-text").textContent = "100%";
+    document.getElementById("status-text").textContent = "Starting ComfyUI...";
+    document.getElementById("weights-speed").textContent = "";
+    setPhase("F");
+    document.querySelectorAll(".rung").forEach(r => {
+      r.classList.remove("future","active"); r.classList.add("done");
+    });
+    const ping = setInterval(async () => {
+      try {
+        const r = await fetch("/?_t=" + Date.now(), { cache: "no-store" });
+        if (r.ok) {
+          const html = await r.text();
+          if (html.includes("comfyui") || html.includes("litegraph") || html.length > 5000) { clearInterval(ping); location.reload(); }
+        }
+      } catch (_) {}
+    }, 1500);
+    setTimeout(() => { document.getElementById("refresh-prompt").style.display = "block"; }, 20000);
+  }
+
+  // ── Main log polling ──
+  async function poll() {
+    try {
+      const res = await fetch("install.log?t=" + Date.now());
+      if (!res.ok) return;
+      const text = await res.text();
+      if (text.length === state.lastLogSize) return; // unchanged
+      state.lastLogSize = text.length;
+
+      const lines = text.split("\n");
+
+      // ── Phase detection (from most recent phase marker) ──
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const m = lines[i].match(/Phase\s+([A-F])\s*:/);
+        if (m) { state.phase = m[1]; break; }
+      }
+      if (state.phase) setPhase(state.phase);
+
+      // ── Progress bar ──
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const m = lines[i].match(/\[PROGRESS:\s*(\d+)\]/);
+        if (m) { state.pct = parseInt(m[1]); break; }
+      }
+      if (state.pct > 0) {
+        document.getElementById("bar").style.width = state.pct + "%";
+        document.getElementById("pct-text").textContent = state.pct + "%";
+      }
+
+      // ── Count nodes installed (look at [ok] and [+] lines from _install_node) ──
+      // Each node call emits a line like "  [ok] X (1/28) ..." or "  [+] X (1/28) cloning..."
+      let lastNodeIdx = 0;
+      for (const l of lines) {
+        const m = l.match(/\((\d+)\/28\)/);
+        if (m) lastNodeIdx = Math.max(lastNodeIdx, parseInt(m[1]));
+      }
+      state.nodesDone = lastNodeIdx;
+      document.getElementById("nodes-done").textContent = lastNodeIdx;
+
+      // ── Model tracking ──
+      let modelsTotal = TOTAL_MODELS;
+      for (const l of lines) {
+        const m = l.match(/Found\s+(\d+)\s+models/);
+        if (m) modelsTotal = parseInt(m[1]);
+      }
+      document.getElementById("models-total").textContent = modelsTotal;
+
+      // Walk the log in order to reconstruct state
+      let successes = 0, failures = 0, currentLabel = null;
+      let dataGB = 0;
+      for (const l of lines) {
+        const startM = l.match(/\[STARTING\]\s*'([^']+)'/);
+        if (startM) currentLabel = startM[1];
+        if (l.includes("[SUCCESS]") && currentLabel) {
+          successes++;
+          if (MODEL_SIZES[currentLabel] !== undefined) dataGB += MODEL_SIZES[currentLabel];
+          currentLabel = null; // clear after resolution
+        }
+        if (l.indexOf("[FAILED]") === 0 || l.indexOf("[FAILED] ") === 0 || /^\[FAILED\]/.test(l)) {
+          failures++;
+          currentLabel = null;
+        }
+      }
+      state.modelsDone = successes;
+      state.modelsFailed = failures;
+      state.currentModel = currentLabel;
+
+      const totalForUI = modelsTotal;
+      document.getElementById("models-done").textContent = successes;
+      document.getElementById("weights-count-text").textContent = successes + " / " + totalForUI;
+      document.getElementById("data-gb").textContent = dataGB.toFixed(1);
+
+      // Paint blocks
+      if (successes + failures > 0) {
+        document.getElementById("weights-panel").style.display = "block";
+      }
+      for (let i = 0; i < totalForUI; i++) {
+        const b = document.getElementById("wb-" + i);
+        if (!b) continue;
+        b.className = "block";
+        if (i < successes) b.classList.add("filled");
+        else if (i === successes && currentLabel) b.classList.add("loading");
+        else if (i < successes + failures + (currentLabel ? 1 : 0) && i >= successes) {
+          // can't distinguish which failed; leave as future
+        }
+      }
+
+      // Current file + speed
+      if (currentLabel) {
+        document.getElementById("current-file").textContent = "\u25b8 " + currentLabel;
+        // Fake-ish speed readout based on time since last SUCCESS
+        const nowTs = Date.now();
+        if (state.lastModelTs && state.lastModelLabel !== currentLabel) {
+          const dt = (nowTs - state.lastModelTs) / 1000;
+          const szGB = MODEL_SIZES[state.lastModelLabel] || 0.5;
+          const mbps = (szGB * 1024) / Math.max(dt, 2);
+          if (mbps > 0.1 && mbps < 500) state.recentBytesPerSec = mbps;
+        }
+        state.lastModelTs = state.lastModelTs || nowTs;
+        state.lastModelLabel = currentLabel;
+        if (state.recentBytesPerSec > 0) {
+          document.getElementById("weights-speed").textContent = state.recentBytesPerSec.toFixed(1) + " MB/s";
+        } else {
+          document.getElementById("weights-speed").textContent = "syncing...";
+        }
+      } else if (successes >= totalForUI) {
+        document.getElementById("current-file").textContent = "\u25b8 All weights synced \u2713";
+        document.getElementById("weights-speed").textContent = "";
+      }
+
+      // ETA (very rough)
+      if (state.pct > 5 && state.pct < 98) {
+        const elapsed = (Date.now() - startTs) / 1000;
+        const total = elapsed * (100 / state.pct);
+        const remaining = Math.max(0, total - elapsed);
+        const mins = Math.ceil(remaining / 60);
+        document.getElementById("eta").innerHTML = "~" + mins + '<span class="sub"> min</span>';
+      }
+
+      // ── Event log: extract significant lines we haven't seen ──
+      const significant = [];
+      for (const l of lines) {
+        if (!l || state.loggedLines.has(l)) continue;
+        if (l.match(/\[SUCCESS\]/)) {
+          // Grab the preceding [STARTING] to get a label (close enough in time)
+          significant.push({icon:"\u2713", klass:"ok", msg:"SUCCESS" + (currentLabel ? "" : "")});
+          state.loggedLines.add(l);
+        } else if (l.match(/\[STARTING\]\s*'([^']+)'/)) {
+          const label = l.match(/\[STARTING\]\s*'([^']+)'/)[1];
+          significant.push({icon:"\u25b8", klass:"run", msg:"STARTING " + label});
+          state.loggedLines.add(l);
+        } else if (l.match(/\[FAILED\]/)) {
+          significant.push({icon:"\u26a0", klass:"warn", msg:l.replace(/.*\[FAILED\]\s*/,"FAILED ")});
+          state.loggedLines.add(l);
+        } else if (l.match(/\[!\]/)) {
+          significant.push({icon:"\u26a0", klass:"warn", msg:l.replace(/^\s*\[!\]\s*/,"WARN ")});
+          state.loggedLines.add(l);
+        } else if (l.match(/━━━ Phase/)) {
+          significant.push({icon:"\u25ce", klass:"info", msg:l.replace(/━━━/g,'').trim()});
+          state.loggedLines.add(l);
+        } else if (l.match(/\[OFM\] \u2713/)) {
+          significant.push({icon:"\u2713", klass:"ok", msg:l.replace(/.*\u2713\s*/,"")});
+          state.loggedLines.add(l);
+        }
+      }
+      // Flush only the last few so the log stays bounded
+      for (const e of significant.slice(-LOG_LINES_MAX)) {
+        pushLog(e.icon, e.klass, nowHHMM(), e.msg);
+      }
+
+      // ── Status text: pick from most recent significant line ──
+      const statusEl = document.getElementById("status-text");
+      if (text.includes("ACCESS DENIED") || text.includes("TOKEN REJECTED") || text.includes("LICENSE DENIED") || text.includes("AUTH ERROR") || text.includes("CRITICAL HALT")) {
+        document.getElementById("main").classList.add("error-state");
+        statusEl.textContent = "\u26d4 Access denied";
+        setTimeout(() => location.reload(), 10000);
+        return;
+      } else if (text.includes("SYSTEM FULLY OPERATIONAL") && !state.handoffStarted) {
+        state.handoffStarted = true; startHandoff();
+      } else {
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const l = lines[i];
+          if (l.includes("UI Lockdown")) { statusEl.textContent = "Applying UI protection \u00b7 Phase F"; break; }
+          else if (l.includes("Deploy workflow") || l.match(/Phase D/)) { statusEl.textContent = "Deploying workflows \u00b7 Phase D"; break; }
+          else if (l.match(/Phase C/) || l.includes("Found") && l.includes("models")) { statusEl.textContent = "Downloading model weights \u00b7 Phase C"; break; }
+          else if (l.match(/Phase B/) || l.includes("install_node")) { statusEl.textContent = "Installing custom nodes \u00b7 Phase B"; break; }
+          else if (l.match(/Phase A/)) { statusEl.textContent = "Fetching workflows \u00b7 Phase A"; break; }
+          else if (l.includes("Validating token")) { statusEl.textContent = "Verifying license"; break; }
+          else if (l.includes("ComfyUI base") || l.includes("Waiting for")) { statusEl.textContent = "Building ComfyUI core"; break; }
+        }
+      }
+    } catch (e) {}
+  }
+  setInterval(poll, 1500);
+  poll();
 })();
 </script>
 </body>
 </html>
-
 PRELOADER_HTML
 
     cd /tmp/ofmpath_loading || { echo "[OFM] ⚠ cannot cd /tmp/ofmpath_loading"; return 1; }
