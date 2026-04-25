@@ -47,79 +47,64 @@ _start_preloader() {
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { height:100%; overflow-x:hidden; }
   body { background:#0a0a0a; color:#f0e6cf; font-family:'JetBrains Mono','Courier New',monospace;
-         display:flex; justify-content:center; align-items:flex-start; min-height:100vh; position:relative;
-         padding:32px 16px; }
+         display:flex; justify-content:center; align-items:center; min-height:100vh; position:relative;
+         padding:48px 16px; }
   body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:2;
                  background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0,rgba(0,0,0,.35) 1px,transparent 1px,transparent 3px); }
   body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:1;
                 background:radial-gradient(ellipse at 50% 50%, rgba(240,230,207,0.04) 0%, transparent 65%); }
-  .wrap { position:relative; z-index:10; max-width:720px; width:100%; padding:32px 36px;
+  .wrap { position:relative; z-index:10; max-width:780px; width:100%; padding:48px 50px 44px;
           background:rgba(15,12,8,0.7); border:1px solid rgba(240,230,207,0.18); border-radius:4px;
           backdrop-filter:blur(8px);
           box-shadow:0 0 60px rgba(240,230,207,0.05), inset 0 0 0 1px rgba(240,230,207,0.06);
           animation:slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
   @keyframes slideUp { from { opacity:0; transform:translateY(16px);} to { opacity:1; transform:translateY(0);} }
-  .brand { text-align:center; font-size:11px; letter-spacing:4px; color:#f0e6cf; opacity:.6; margin-bottom:8px; }
-  pre.ascii { font-size:11px; line-height:1.2; color:#faf1d6;
-              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 18px; white-space:pre; text-align:center;
+  .brand { text-align:center; font-size:12px; letter-spacing:5px; color:#f0e6cf; opacity:.6; margin-bottom:14px; }
+  pre.ascii { font-size:14px; line-height:1.25; color:#faf1d6;
+              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 24px; white-space:pre; text-align:center;
               font-family:'JetBrains Mono','Courier New',monospace; }
-  .version { text-align:center; font-size:10px; color:#f0e6cf; opacity:.5; letter-spacing:3px; margin-bottom:22px; text-transform:uppercase; }
+  .version { text-align:center; font-size:11px; color:#f0e6cf; opacity:.5; letter-spacing:4px; margin-bottom:32px; text-transform:uppercase; }
   .header-row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
-  .status-badge { display:inline-flex; align-items:center; gap:10px; padding:7px 16px;
+  .status-badge { display:inline-flex; align-items:center; gap:10px; padding:10px 20px;
                   background:rgba(240,230,207,0.05); border:1px solid rgba(240,230,207,0.22); border-radius:3px;
-                  font-size:12px; color:#faf1d6; letter-spacing:0.4px; }
+                  font-size:13px; color:#faf1d6; letter-spacing:0.4px; }
   .dot { width:8px; height:8px; border-radius:50%; background:#f5efd6;
          animation:dotPulse 1.3s infinite; box-shadow:0 0 8px #f5efd6; }
   @keyframes dotPulse { 0%,100% { transform:scale(.8); opacity:.6;} 50% { transform:scale(1.25); opacity:1;} }
   .elapsed { font-family:'JetBrains Mono',monospace; font-size:12px; color:rgba(240,230,207,0.7); letter-spacing:1px; }
-  .bar-track { width:100%; height:4px; background:rgba(240,230,207,0.08); border-radius:2px;
-               overflow:hidden; margin-bottom:6px; box-shadow:inset 0 0 0 1px rgba(240,230,207,0.15); }
+  .bar-track { width:100%; height:6px; background:rgba(240,230,207,0.08); border-radius:3px;
+               overflow:hidden; margin-bottom:8px; box-shadow:inset 0 0 0 1px rgba(240,230,207,0.15); }
   .bar-fill { height:100%; width:0%; background:linear-gradient(90deg,#f0e6cf,#faf1d6);
               transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 10px rgba(240,230,207,0.4); }
-  .bar-label { display:flex; justify-content:space-between; font-size:10px; color:rgba(240,230,207,0.45);
-               letter-spacing:1px; margin-bottom:22px; text-transform:uppercase; }
-  .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:18px; }
-  .stat { background:rgba(240,230,207,0.04); border:1px solid rgba(240,230,207,0.15); border-radius:3px; padding:12px 10px; }
-  .stat-label { font-size:9px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:6px; }
-  .stat-value { font-size:22px; color:#faf1d6; font-weight:600; line-height:1; }
-  .stat-value .sub { font-size:11px; color:rgba(240,230,207,0.4); }
-  .stat-hint { font-size:9px; color:rgba(240,230,207,0.4); margin-top:4px; letter-spacing:0.5px; }
+  .bar-label { display:flex; justify-content:space-between; font-size:11px; color:rgba(240,230,207,0.45);
+               letter-spacing:1px; margin-bottom:32px; text-transform:uppercase; }
+  .stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:28px; }
+  .stat { background:rgba(240,230,207,0.04); border:1px solid rgba(240,230,207,0.15); border-radius:3px; padding:20px 18px; }
+  .stat-label { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:10px; }
+  .stat-value { font-size:30px; color:#faf1d6; font-weight:600; line-height:1; }
+  .stat-value .sub { font-size:14px; color:rgba(240,230,207,0.4); }
+  .stat-hint { font-size:10px; color:rgba(240,230,207,0.4); margin-top:8px; letter-spacing:0.5px; }
   .panel { background:rgba(240,230,207,0.03); border:1px dashed rgba(240,230,207,0.22); border-radius:3px;
-           padding:14px; margin-bottom:14px; }
-  .panel-label { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:12px; }
-  .ladder { display:flex; gap:6px; font-size:10px; }
-  .rung { flex:1; padding:7px 4px; text-align:center; border-radius:2px; transition:all 0.4s; }
+           padding:20px 22px; margin-bottom:20px; }
+  .panel-label { font-size:11px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:18px; }
+  .ladder { display:flex; gap:8px; font-size:11px; }
+  .rung { flex:1; padding:14px 6px; text-align:center; border-radius:3px; transition:all 0.4s; }
   .rung.future { background:rgba(240,230,207,0.05); color:rgba(240,230,207,0.5); border:1px solid rgba(240,230,207,0.15); }
   .rung.done { background:rgba(240,230,207,0.12); color:#0a0a0a; font-weight:600; }
   .rung.active { background:rgba(240,230,207,0.28); color:#0a0a0a; font-weight:600; box-shadow:0 0 10px rgba(240,230,207,0.3); }
-  .rung .code { font-size:8px; letter-spacing:1px; opacity:0.6; display:block; margin-bottom:2px; }
+  .rung .code { font-size:9px; letter-spacing:1.5px; opacity:0.6; display:block; margin-bottom:5px; }
   .rung.done .code, .rung.active .code { color:rgba(10,10,10,0.6); opacity:1; }
   .weights-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
   .weights-count { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; }
   .weights-speed { font-size:10px; color:#faf1d6; letter-spacing:0.5px; }
-  .blocks { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px; }
-  .block { width:12px; height:12px; border-radius:2px;
+  .blocks { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:14px; }
+  .block { width:14px; height:14px; border-radius:2px;
            background:rgba(240,230,207,0.06); border:1px solid rgba(240,230,207,0.2); transition:all 0.3s; }
   .block.filled { background:#f0e6cf; border-color:#f0e6cf; box-shadow:0 0 6px rgba(240,230,207,0.45); }
   .block.loading { background:rgba(240,230,207,0.2); border-color:rgba(240,230,207,0.4); animation:dotPulse 1.3s infinite; }
   .block.failed { background:rgba(201,122,95,0.25); border-color:rgba(201,122,95,0.6); }
   .current-file { font-size:10px; color:rgba(250,241,214,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .log-panel { background:rgba(0,0,0,0.5); border:1px solid rgba(240,230,207,0.12); border-radius:3px;
-               padding:12px 14px; height:145px; overflow:hidden; position:relative; }
-  .log-label { font-size:9px; color:rgba(240,230,207,0.45); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px; }
-  .log-lines { font-family:'JetBrains Mono',monospace; font-size:10px; line-height:1.55;
-               color:rgba(240,230,207,0.7); overflow:hidden; }
-  .log-line { display:flex; gap:10px; white-space:nowrap; }
-  .log-ts { color:rgba(240,230,207,0.4); min-width:45px; flex-shrink:0; }
-  .log-icon { flex-shrink:0; }
-  .log-icon.ok { color:rgba(250,241,214,0.5); }
-  .log-icon.run { color:#faf1d6; }
-  .log-icon.warn { color:#c97a5f; }
-  .log-icon.info { color:rgba(250,241,214,0.5); }
-  .log-msg { overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
-  .log-line.warn .log-msg { color:rgba(201,122,95,0.85); }
-  .log-line.run .log-msg { color:#faf1d6; }
-  .footer { text-align:center; font-size:10px; color:rgba(240,230,207,0.25); letter-spacing:3px; margin-top:18px; text-transform:uppercase; }
+  .footer { text-align:center; font-size:11px; color:rgba(240,230,207,0.25); letter-spacing:4px; margin-top:32px; text-transform:uppercase; }
   .error-state .bar-fill { background:#c97a5f !important; box-shadow:0 0 10px #c97a5f; }
   .error-state .status-badge { color:#c97a5f; border-color:rgba(201,122,95,0.4); }
   .error-state .dot { background:#c97a5f; box-shadow:0 0 8px #c97a5f; }
@@ -164,18 +149,13 @@ _start_preloader() {
     <div class="stats">
       <div class="stat">
         <div class="stat-label">Nodes</div>
-        <div class="stat-value"><span id="nodes-done">0</span><span class="sub">/28</span></div>
+        <div class="stat-value"><span id="nodes-done">0</span><span class="sub">/27</span></div>
         <div class="stat-hint">installed</div>
       </div>
       <div class="stat">
         <div class="stat-label">Models</div>
         <div class="stat-value"><span id="models-done">0</span><span class="sub">/<span id="models-total">49</span></span></div>
         <div class="stat-hint">synced</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Data</div>
-        <div class="stat-value"><span id="data-gb">0.0</span><span class="sub"> GB</span></div>
-        <div class="stat-hint">of ~75 GB</div>
       </div>
       <div class="stat">
         <div class="stat-label">ETA</div>
@@ -187,12 +167,10 @@ _start_preloader() {
     <div class="panel">
       <div class="panel-label">Pipeline</div>
       <div class="ladder" id="ladder">
-        <div class="rung future" data-phase="A"><span class="code">A</span>Workflows</div>
-        <div class="rung future" data-phase="B"><span class="code">B</span>Nodes</div>
-        <div class="rung future" data-phase="C"><span class="code">C</span>Models</div>
-        <div class="rung future" data-phase="D"><span class="code">D</span>Deploy</div>
-        <div class="rung future" data-phase="E"><span class="code">E</span>Settings</div>
-        <div class="rung future" data-phase="F"><span class="code">F</span>Lockdown</div>
+        <div class="rung future" data-phase="INIT"><span class="code">1</span>Initializing</div>
+        <div class="rung future" data-phase="B"><span class="code">2</span>Nodes</div>
+        <div class="rung future" data-phase="C"><span class="code">3</span>Models</div>
+        <div class="rung future" data-phase="D"><span class="code">4</span>Deploy</div>
       </div>
     </div>
 
@@ -203,11 +181,6 @@ _start_preloader() {
       </div>
       <div class="blocks" id="blocks"></div>
       <div class="current-file" id="current-file">&blacktriangleright; Awaiting...</div>
-    </div>
-
-    <div class="log-panel">
-      <div class="log-label">Event log</div>
-      <div class="log-lines" id="log-lines"></div>
     </div>
 
     <div id="refresh-prompt">
@@ -249,9 +222,17 @@ _start_preloader() {
   }
 
   // ── Phase tracker ──
-  const PHASE_ORDER = ["A","B","C","D","E","F"];
+  const PHASE_ORDER = ["INIT","B","C","D"];
+  function mapPhase(internal) {
+    if (internal === "A") return "INIT";
+    if (internal === "B") return "B";
+    if (internal === "C") return "C";
+    if (internal === "D" || internal === "E" || internal === "F") return "D";
+    return "INIT";
+  }
   function setPhase(active) {
-    const idx = PHASE_ORDER.indexOf(active);
+    const uiPhase = mapPhase(active);
+    const idx = PHASE_ORDER.indexOf(uiPhase);
     document.querySelectorAll(".rung").forEach(r => {
       const p = r.getAttribute("data-phase");
       const pidx = PHASE_ORDER.indexOf(p);
@@ -261,47 +242,6 @@ _start_preloader() {
       else r.classList.add("future");
     });
   }
-
-  // ── Log tail (keep last 5) ──
-  const LOG_LINES_MAX = 5;
-  const logLines = [];
-  function pushLog(icon, klass, ts, msg) {
-    logLines.push({icon, klass, ts, msg});
-    while (logLines.length > LOG_LINES_MAX) logLines.shift();
-    const el = document.getElementById("log-lines");
-    el.innerHTML = "";
-    for (const l of logLines) {
-      const row = document.createElement("div");
-      row.className = "log-line " + l.klass;
-      row.innerHTML =
-        '<span class="log-ts">'+l.ts+'</span>' +
-        '<span class="log-icon '+l.klass+'">'+l.icon+'</span>' +
-        '<span class="log-msg">'+l.msg+'</span>';
-      el.appendChild(row);
-    }
-  }
-
-  // ── Model size estimates (GB) — approximate so "Data" shows realistic growth ──
-  // Weighted by what actually downloads. Total ≈ 75 GB ish. Maps by LABEL from [STARTING] 'label'.
-  const MODEL_SIZES = {
-    z_image_bf16: 12, z_image_fp8: 7, wan_diffusion: 27,
-    qwen3_4b: 4.2, umt5xxl: 5.1, text_enc: 2.5,
-    clip_vision_k: 1.3, clip_vision_h: 1.3,
-    vae_ae: 0.3, vae_wan: 0.5,
-    ctrl_wan: 1.3, ctrl_zimg: 0.9,
-    ckpt_detect: 3.0,
-    lora_real: 0.15, lora_xxx: 0.15, lora_gpu: 0.15, lora_wanfun: 0.8,
-    lora_light: 0.4, lora_pusa: 0.5, lora_wanrw: 0.6,
-    det_yolo: 0.06, det_vitpose_data: 1.2, det_vitpose_model: 0.4,
-    sam_vit_b: 0.4, upscaler: 0.07,
-    bbox_face: 0.023, bbox_body: 0.11, bbox_breast: 0.023, bbox_nipples: 0.023,
-    bbox_vagina: 0.023, bbox_ass: 0.023, bbox_eyes_v2: 0.023, bbox_eyes: 0.023,
-    bbox_faces: 0.023, bbox_hand: 0.023, bbox_foot: 0.05,
-    qwen_added: 0.00001, qwen_chat: 0.00001, qwen_config: 0.00001, qwen_gen: 0.00001,
-    qwen_merges: 0.002, qwen_idx: 0.00005, qwen_pre: 0.00001, qwen_spc: 0.00001,
-    qwen_tok: 0.012, qwen_tokcfg: 0.00001, qwen_vocab: 0.003,
-    qwen_shard1: 4.0, qwen_shard2: 4.0,
-  };
 
   // ── Main state parsed from install.log ──
   const state = {
@@ -380,10 +320,10 @@ _start_preloader() {
       }
 
       // ── Count nodes installed (look at [ok] and [+] lines from _install_node) ──
-      // Each node call emits a line like "  [ok] X (1/28) ..." or "  [+] X (1/28) cloning..."
+      // Each node call emits a line like "  [ok] X (1/27) ..." or "  [+] X (1/27) cloning..."
       let lastNodeIdx = 0;
       for (const l of lines) {
-        const m = l.match(/\((\d+)\/28\)/);
+        const m = l.match(/\((\d+)\/27\)/);
         if (m) lastNodeIdx = Math.max(lastNodeIdx, parseInt(m[1]));
       }
       state.nodesDone = lastNodeIdx;
@@ -399,14 +339,12 @@ _start_preloader() {
 
       // Walk the log in order to reconstruct state
       let successes = 0, failures = 0, currentLabel = null;
-      let dataGB = 0;
       for (const l of lines) {
         const startM = l.match(/\[STARTING\]\s*'([^']+)'/);
         if (startM) currentLabel = startM[1];
         if (l.includes("[SUCCESS]") && currentLabel) {
           successes++;
-          if (MODEL_SIZES[currentLabel] !== undefined) dataGB += MODEL_SIZES[currentLabel];
-          currentLabel = null; // clear after resolution
+          currentLabel = null;
         }
         if (l.indexOf("[FAILED]") === 0 || l.indexOf("[FAILED] ") === 0 || /^\[FAILED\]/.test(l)) {
           failures++;
@@ -420,7 +358,6 @@ _start_preloader() {
       const totalForUI = modelsTotal;
       document.getElementById("models-done").textContent = successes;
       document.getElementById("weights-count-text").textContent = successes + " / " + totalForUI;
-      document.getElementById("data-gb").textContent = dataGB.toFixed(1);
 
       // Paint blocks
       if (successes + failures > 0) {
@@ -432,20 +369,15 @@ _start_preloader() {
         b.className = "block";
         if (i < successes) b.classList.add("filled");
         else if (i === successes && currentLabel) b.classList.add("loading");
-        else if (i < successes + failures + (currentLabel ? 1 : 0) && i >= successes) {
-          // can't distinguish which failed; leave as future
-        }
       }
 
       // Current file + speed
       if (currentLabel) {
         document.getElementById("current-file").textContent = "\u25b8 " + currentLabel;
-        // Fake-ish speed readout based on time since last SUCCESS
         const nowTs = Date.now();
         if (state.lastModelTs && state.lastModelLabel !== currentLabel) {
           const dt = (nowTs - state.lastModelTs) / 1000;
-          const szGB = MODEL_SIZES[state.lastModelLabel] || 0.5;
-          const mbps = (szGB * 1024) / Math.max(dt, 2);
+          const mbps = 512 / Math.max(dt, 2);
           if (mbps > 0.1 && mbps < 500) state.recentBytesPerSec = mbps;
         }
         state.lastModelTs = state.lastModelTs || nowTs;
@@ -469,37 +401,6 @@ _start_preloader() {
         document.getElementById("eta").innerHTML = "~" + mins + '<span class="sub"> min</span>';
       }
 
-      // ── Event log: extract significant lines we haven't seen ──
-      const significant = [];
-      for (const l of lines) {
-        if (!l || state.loggedLines.has(l)) continue;
-        if (l.match(/\[SUCCESS\]/)) {
-          // Grab the preceding [STARTING] to get a label (close enough in time)
-          significant.push({icon:"\u2713", klass:"ok", msg:"SUCCESS" + (currentLabel ? "" : "")});
-          state.loggedLines.add(l);
-        } else if (l.match(/\[STARTING\]\s*'([^']+)'/)) {
-          const label = l.match(/\[STARTING\]\s*'([^']+)'/)[1];
-          significant.push({icon:"\u25b8", klass:"run", msg:"STARTING " + label});
-          state.loggedLines.add(l);
-        } else if (l.match(/\[FAILED\]/)) {
-          significant.push({icon:"\u26a0", klass:"warn", msg:l.replace(/.*\[FAILED\]\s*/,"FAILED ")});
-          state.loggedLines.add(l);
-        } else if (l.match(/\[!\]/)) {
-          significant.push({icon:"\u26a0", klass:"warn", msg:l.replace(/^\s*\[!\]\s*/,"WARN ")});
-          state.loggedLines.add(l);
-        } else if (l.match(/━━━ Phase/)) {
-          significant.push({icon:"\u25ce", klass:"info", msg:l.replace(/━━━/g,'').trim()});
-          state.loggedLines.add(l);
-        } else if (l.match(/\[OFM\] \u2713/)) {
-          significant.push({icon:"\u2713", klass:"ok", msg:l.replace(/.*\u2713\s*/,"")});
-          state.loggedLines.add(l);
-        }
-      }
-      // Flush only the last few so the log stays bounded
-      for (const e of significant.slice(-LOG_LINES_MAX)) {
-        pushLog(e.icon, e.klass, nowHHMM(), e.msg);
-      }
-
       // ── Status text: pick from most recent significant line ──
       const statusEl = document.getElementById("status-text");
       if (text.includes("ACCESS DENIED") || text.includes("TOKEN REJECTED") || text.includes("LICENSE DENIED") || text.includes("AUTH ERROR") || text.includes("CRITICAL HALT")) {
@@ -512,11 +413,11 @@ _start_preloader() {
       } else {
         for (let i = lines.length - 1; i >= 0; i--) {
           const l = lines[i];
-          if (l.includes("UI Lockdown")) { statusEl.textContent = "Applying UI protection \u00b7 Phase F"; break; }
+          if (l.includes("UI Lockdown") || l.match(/Phase F/) || l.match(/Phase E/)) { statusEl.textContent = "Finalizing deployment \u00b7 Phase D"; break; }
           else if (l.includes("Deploy workflow") || l.match(/Phase D/)) { statusEl.textContent = "Deploying workflows \u00b7 Phase D"; break; }
           else if (l.match(/Phase C/) || l.includes("Found") && l.includes("models")) { statusEl.textContent = "Downloading model weights \u00b7 Phase C"; break; }
           else if (l.match(/Phase B/) || l.includes("install_node")) { statusEl.textContent = "Installing custom nodes \u00b7 Phase B"; break; }
-          else if (l.match(/Phase A/)) { statusEl.textContent = "Fetching workflows \u00b7 Phase A"; break; }
+          else if (l.match(/Phase A/)) { statusEl.textContent = "Initializing \u00b7 Phase INIT"; break; }
           else if (l.includes("Validating token")) { statusEl.textContent = "Verifying license"; break; }
           else if (l.includes("ComfyUI base") || l.includes("Waiting for")) { statusEl.textContent = "Building ComfyUI core"; break; }
         }
@@ -799,10 +700,98 @@ import os
 p = os.environ.get("FRONTEND_HTML", "")
 if not os.path.isfile(p): raise SystemExit(0)
 boot = '<script data-id="OFMPATH-BOOT">document.addEventListener("contextmenu",function(e){var t=e.target;if(t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}},true);document.addEventListener("keydown",function(e){var k=e.key?e.key.toLowerCase():"";if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&"ijc".includes(k))||(e.ctrlKey&&k==="u")||(e.ctrlKey&&"sepa".includes(k))){e.preventDefault();e.stopImmediatePropagation()}},true);setInterval(function(){var t=performance.now();debugger;if(performance.now()-t>100){document.body.innerHTML="";window.location.href="about:blank";setTimeout(function(){window.close()},10);}},500);</script>'
+nuke = r'''<style data-id="OFMPATH-NUKE">
+.crystools-root,.crystools-monitors-container,[class*="crystools"],[id*="crystools"]{display:none !important;visibility:hidden !important}
+.pysssss-image-feed,
+button[title*="Image Feed"],
+button[aria-label*="Image Feed"]{display:none !important}
+.side-tool-bar-container button[aria-label*="Node Library" i],
+.side-tool-bar-container button[aria-label*="Model Library" i],
+.side-tool-bar-container button[aria-label*="Models Library" i],
+.side-tool-bar-container button[aria-label*="Templates" i],
+.side-tool-bar-container button[aria-label*="Node Map" i],
+.side-tool-bar-container button[aria-label*="Bookmarks" i],
+.side-tool-bar-container button[aria-label*="Apps" i],
+.side-tool-bar-container button[data-pc-name="node-library"],
+.side-tool-bar-container button[data-pc-name="model-library"],
+.side-tool-bar-container button[data-pc-name="node-map"],
+.comfyui-side-bar button[aria-label*="Node Library" i],
+.comfyui-side-bar button[aria-label*="Model Library" i],
+.comfyui-side-bar button[aria-label*="Models Library" i],
+.comfyui-side-bar button[aria-label*="Templates" i],
+.comfyui-side-bar button[aria-label*="Node Map" i],
+.comfyui-side-bar button[aria-label*="Bookmarks" i],
+.comfyui-side-bar button[aria-label*="Apps" i],
+.comfyui-side-bar button[data-pc-name="node-library"],
+.comfyui-side-bar button[data-pc-name="model-library"],
+.comfyui-side-bar button[data-pc-name="node-map"],
+button[data-pc-name="node-library"],
+button[data-pc-name="model-library"],
+button[data-pc-name="bookmarks"],
+button[data-pc-name="templates"],
+button[data-pc-name="node-map"],
+button[data-pc-name="apps"]{display:none !important;visibility:hidden !important}
+</style>
+<script data-id="OFMPATH-NUKE-JS">
+(function(){
+  var BLOCKED_LABELS = ["save","save as","export","export (api)","clear workflow","delete workflow","load","load default","import"];
+  var BLOCKED_SIDEBAR = ["node library","model library","models library","templates","node map","apps","bookmarks"];
+  var BLOCKED_KEYS = ["ctrl+s","ctrl+shift+s","ctrl+e","ctrl+o"];
+
+  function killMenu(){
+    document.querySelectorAll(".p-menubar-item-content,.p-menuitem-content,[role=\"menuitem\"]").forEach(function(el){
+      var t=(el.innerText||el.textContent||"").trim().toLowerCase();
+      for (var i=0;i<BLOCKED_LABELS.length;i++){
+        var b=BLOCKED_LABELS[i];
+        if (t===b || t.startsWith(b+"\n") || t.startsWith(b+" ")){
+          var li=el.closest("li")||el; li.style.display="none"; break;
+        }
+      }
+    });
+  }
+
+  function killSidebar(){
+    document.querySelectorAll("button").forEach(function(b){
+      var attrs = [
+        b.getAttribute("aria-label")||"",
+        b.getAttribute("title")||"",
+        b.getAttribute("data-pc-name")||"",
+        b.textContent||""
+      ].join(" ").toLowerCase();
+      for (var i=0;i<BLOCKED_SIDEBAR.length;i++){
+        if (attrs.indexOf(BLOCKED_SIDEBAR[i]) !== -1){
+          var li = b.closest("li") || b;
+          li.style.display = "none";
+          break;
+        }
+      }
+    });
+  }
+
+  function killCrystools(){
+    document.querySelectorAll("[class*='crystools'],[id*='crystools']").forEach(function(e){e.style.display="none";});
+    document.querySelectorAll("button").forEach(function(e){
+      var t=(e.innerText||"").trim();
+      if (/^Show Image Feed/i.test(t)) e.style.display="none";
+    });
+  }
+
+  function blockHotkeys(e){
+    var k=(e.key||"").toLowerCase();
+    var combo=(e.ctrlKey||e.metaKey?"ctrl+":"")+(e.shiftKey?"shift+":"")+k;
+    if (BLOCKED_KEYS.indexOf(combo)!==-1){e.preventDefault();e.stopImmediatePropagation();}
+  }
+
+  function tick(){killMenu();killSidebar();killCrystools();}
+  tick();
+  new MutationObserver(tick).observe(document.body,{childList:true,subtree:true});
+  document.addEventListener("keydown",blockHotkeys,true);
+})();
+</script>'''
 with open(p, 'r') as f: html = f.read()
-html = html.replace("<head>", "<head>" + boot, 1)
+html = html.replace("<head>", "<head>" + boot + nuke, 1)
 with open(p, 'w') as f: f.write(html)
-print("[OFM] ✓ UI boot protection injected")
+print("[OFM] ✓ UI lockdown injected (boot + crystools/imagefeed nuke + menu-item filter + hotkey block)")
 PYINJECT
     fi
 
