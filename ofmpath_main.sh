@@ -74,7 +74,9 @@ _start_preloader() {
               text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 clamp(10px, 2vh, 24px); white-space:pre; text-align:center;
               font-family:'JetBrains Mono','Courier New',monospace; }
   .version { text-align:center; font-size:11px; color:#f0e6cf; opacity:.5; letter-spacing:4px; margin-bottom:clamp(12px, 2.5vh, 32px); text-transform:uppercase; }
-  .header-row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:clamp(8px, 1.2vh, 14px); flex-wrap:wrap; }
+  .header-row { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; margin-bottom:clamp(8px, 1.2vh, 14px); }
+  .header-row .status-badge { grid-column:2; justify-self:center; }
+  .header-row .elapsed { grid-column:3; justify-self:end; }
   .status-badge { display:inline-flex; align-items:center; gap:10px; padding:clamp(6px, 1vh, 10px) 20px;
                   background:rgba(240,230,207,0.05); border:1px solid rgba(240,230,207,0.22); border-radius:3px;
                   font-size:13px; color:#faf1d6; letter-spacing:0.4px; }
@@ -178,14 +180,14 @@ _start_preloader() {
 
     <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
     <div class="bar-label">
-      <span>Overall deployment</span>
+      <span></span>
       <span id="pct-text">0%</span>
     </div>
 
     <div class="stats">
       <div class="stat">
         <div class="stat-label">Nodes</div>
-        <div class="stat-value"><span id="nodes-done">0</span><span class="sub">/27</span></div>
+        <div class="stat-value"><span id="nodes-done">0</span><span class="sub">/<span id="nodes-total">28</span></span></div>
         <div class="stat-hint">installed</div>
       </div>
       <div class="stat">
@@ -356,14 +358,30 @@ _start_preloader() {
       }
 
       // ── Count nodes installed (look at [ok] and [+] lines from _install_node) ──
-      // Each node call emits a line like "  [ok] X (1/27) ..." or "  [+] X (1/27) cloning..."
+      // Each node call emits a line like "  [ok] X (1/28) ..." or "  [+] X (3/28) cloning..."
+      // We capture BOTH the current index and the total — the total varies between releases
+      // (currently 28, was 27 previously). Don't hardcode it.
       let lastNodeIdx = 0;
+      let nodesTotal = 0;
       for (const l of lines) {
-        const m = l.match(/\((\d+)\/27\)/);
-        if (m) lastNodeIdx = Math.max(lastNodeIdx, parseInt(m[1]));
+        const m = l.match(/\((\d+)\/(\d+)\)/);
+        if (m) {
+          const idx = parseInt(m[1]);
+          const tot = parseInt(m[2]);
+          // Only trust matches that look like node-install pace (total roughly 20-50, not e.g. download bytes)
+          if (tot >= 10 && tot <= 100) {
+            lastNodeIdx = Math.max(lastNodeIdx, idx);
+            nodesTotal = Math.max(nodesTotal, tot);
+          }
+        }
       }
       state.nodesDone = lastNodeIdx;
       document.getElementById("nodes-done").textContent = lastNodeIdx;
+      // Update the /N denominator if we learned the real total from the log
+      if (nodesTotal > 0) {
+        const denomEl = document.getElementById("nodes-total");
+        if (denomEl) denomEl.textContent = nodesTotal;
+      }
 
       // ── Model tracking ──
       let modelsTotal = TOTAL_MODELS;
@@ -428,14 +446,92 @@ _start_preloader() {
         document.getElementById("weights-speed").textContent = "";
       }
 
-      // ETA (very rough)
-      if (state.pct > 5 && state.pct < 98) {
-        const elapsed = (Date.now() - startTs) / 1000;
-        const total = elapsed * (100 / state.pct);
-        const remaining = Math.max(0, total - elapsed);
-        const mins = Math.ceil(remaining / 60);
-        document.getElementById("eta").innerHTML = "~" + mins + '<span class="sub"> min</span>';
-      }
+      // ── ETA — bytes-based projection ──
+      // Strategy: from the log we know per-model declared size ("[dl] N bytes").
+      // We sum total bytes of the manifest, sum bytes of completed models, and
+      // project remaining time using the observed download rate.
+      // Falls back to pct-based extrapolation early in the run when we have no rate signal.
+      try {
+        // Per-model declared sizes — match "  [dl] 12309866400 bytes"
+        const sizesByOrder = [];
+        for (const l of lines) {
+          const m = l.match(/\[dl\]\s+(\d+)\s+bytes/);
+          if (m) sizesByOrder.push(parseInt(m[1]));
+        }
+        // Walk in order: bytes_done = sum of sizes of models that hit [SUCCESS]
+        let bytesDone = 0, bytesTotal = 0, nextSizeIdx = 0, currentBytes = 0;
+        for (const l of lines) {
+          if (l.match(/\[STARTING\]/)) {
+            // The next [dl] line gives us this model's size
+            // (we resolve it lazily below by reading the next "[dl]" after this STARTING)
+          }
+          const dl = l.match(/\[dl\]\s+(\d+)\s+bytes/);
+          if (dl) {
+            currentBytes = parseInt(dl[1]);
+            bytesTotal += currentBytes;
+          }
+          if (l.includes("[SUCCESS]")) {
+            bytesDone += currentBytes;
+            currentBytes = 0;
+          }
+          if (/^\[FAILED\]/.test(l)) {
+            // Treat failed as "won't be retried" — count as done so ETA doesn't stall on it
+            bytesDone += currentBytes;
+            currentBytes = 0;
+          }
+        }
+
+        // Rate: bytes per second. Prefer observed (recentBytesPerSec is in MB/s).
+        let bps = (state.recentBytesPerSec || 0) * 1024 * 1024;
+
+        // If we don't have a rate signal yet but we've completed models, derive it from elapsed
+        if (bps <= 0 && bytesDone > 0 && state.firstDownloadTs) {
+          const dlElapsed = Math.max(1, (Date.now() - state.firstDownloadTs) / 1000);
+          bps = bytesDone / dlElapsed;
+        }
+        if (state.firstDownloadTs == null && bytesDone > 0) {
+          state.firstDownloadTs = Date.now();
+        }
+
+        const bytesRemaining = Math.max(0, bytesTotal - bytesDone);
+        let etaSec = null;
+
+        // Primary: bytes-based projection using observed throughput
+        if (bps > 1024 * 1024 && bytesTotal > 0 && bytesRemaining > 0) {
+          etaSec = bytesRemaining / bps;
+          etaSec += 30;  // tail for Phase D (deploy + lockdown + finalize)
+        }
+
+        if (etaSec == null && state.pct > 5 && state.pct < 98) {
+          // Fallback: pct-based extrapolation. Prefer install start time from
+          // the log itself ([OFM-INNER] Starting at <ISO>) so a page-reload
+          // mid-run doesn't reset the elapsed clock.
+          let installStartMs = null;
+          for (const l of lines) {
+            const m = l.match(/Starting at\s+(\S+)/);
+            if (m) { const t = Date.parse(m[1]); if (!isNaN(t)) installStartMs = t; break; }
+          }
+          const elapsed = ((Date.now() - (installStartMs || startTs))) / 1000;
+          if (elapsed > 30) {  // need at least 30s to make a sensible projection
+            const totalEst = elapsed * (100 / state.pct);
+            etaSec = Math.max(0, totalEst - elapsed);
+          }
+        }
+
+        if (etaSec != null && etaSec >= 0) {
+          // Smooth — average against previous reading to prevent jitter
+          if (state.lastEtaSec != null) {
+            etaSec = state.lastEtaSec * 0.7 + etaSec * 0.3;
+          }
+          state.lastEtaSec = etaSec;
+
+          let label;
+          if (etaSec < 60)        label = "<1<span class=\"sub\"> min</span>";
+          else if (etaSec < 3600) label = "~" + Math.ceil(etaSec / 60) + '<span class="sub"> min</span>';
+          else                    label = (etaSec / 3600).toFixed(1) + '<span class="sub"> hrs</span>';
+          document.getElementById("eta").innerHTML = label;
+        }
+      } catch (e) { /* ETA is best-effort, never break the UI */ }
 
       // ── Status text: pick from most recent significant line ──
       const statusEl = document.getElementById("status-text");
