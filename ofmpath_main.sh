@@ -697,205 +697,235 @@ _run_fallback_installer() {
 _lockdown_ui() {
     echo "[PROGRESS: 92]"
     echo "=========================================="
-    echo "[OFM] Applying UI Lockdown..."
+    echo "[OFM] Applying UI Lockdown (OFMPATH hardcore injection)..."
 
-    # Build list of ALL frontend index.html paths we need to patch.
-    # Some ComfyUI versions serve from site-packages, others from /workspace/ComfyUI/web.
-    # We patch both to be safe.
-    local TARGET_HTMLS=()
-    local FRONTEND_DIR
-    FRONTEND_DIR=$(python3 -c "import comfyui_frontend_package, os; print(os.path.dirname(comfyui_frontend_package.__file__))" 2>/dev/null)
-    [ -n "$FRONTEND_DIR" ] && [ -f "${FRONTEND_DIR}/static/index.html" ] && TARGET_HTMLS+=("${FRONTEND_DIR}/static/index.html")
-    [ -f "${COMFYUI_DIR}/web/index.html" ] && TARGET_HTMLS+=("${COMFYUI_DIR}/web/index.html")
+    # Optional branding (set via env vars in your Vast.ai template if you host your own).
+    # When empty the JS no-ops the logo/background — no broken images.
+    export OFMPATH_LOGO_URL="${OFMPATH_LOGO_URL:-}"
+    export OFMPATH_BG_URL="${OFMPATH_BG_URL:-}"
+    export COMFYUI_DIR="$COMFYUI_DIR"
 
-    if [ ${#TARGET_HTMLS[@]} -eq 0 ]; then
-        echo "[OFM] ⚠ No frontend index.html found — skipping injection"
-    else
-        export OFMPATH_TARGETS="${TARGET_HTMLS[*]}"
-        python3 <<'PYINJECT'
-import os
-targets = [t for t in os.environ.get("OFMPATH_TARGETS", "").split() if os.path.isfile(t)]
+    python3 <<'PYINJECT'
+import os, site
+
+LOGO_URL = os.environ.get("OFMPATH_LOGO_URL", "") or ""
+BG_URL   = os.environ.get("OFMPATH_BG_URL",   "") or ""
+COMFYUI_DIR = os.environ.get("COMFYUI_DIR", "/workspace/ComfyUI")
+
+# ── Discover EVERY plausible frontend index.html on disk ──
+# Some Vast images split site-packages between /venv, /opt/venv, system Python and user-site.
+# Patch them all.
+candidates = []
+try:
+    for sp in site.getsitepackages():
+        candidates.append(os.path.join(sp, "comfyui_frontend_package", "static", "index.html"))
+except Exception:
+    pass
+try:
+    candidates.append(os.path.join(site.getusersitepackages(), "comfyui_frontend_package", "static", "index.html"))
+except Exception:
+    pass
+candidates.append(os.path.join(COMFYUI_DIR, "web", "index.html"))
+
+seen = set(); targets = []
+for p in candidates:
+    if p and p not in seen and os.path.isfile(p):
+        seen.add(p); targets.append(p)
+
 if not targets:
+    print("[OFM] \u26a0 No frontend index.html found anywhere — skipping injection")
     raise SystemExit(0)
 
-# ── BOOT script: anti-devtools, anti-debugger, hotkey block (runs FIRST, before any frontend JS) ──
-boot = '<script data-id="OFMPATH-BOOT">document.addEventListener("contextmenu",function(e){var t=e.target;if(t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}},true);document.addEventListener("keydown",function(e){var k=e.key?e.key.toLowerCase():"";if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&"ijc".includes(k))||(e.ctrlKey&&k==="u")||(e.ctrlKey&&"sepacv".includes(k))){e.preventDefault();e.stopImmediatePropagation()}},true);window.addEventListener("dblclick",function(e){var t=e.target;if(t&&(t.tagName==="CANVAS"||(t.closest&&t.closest("canvas")))){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}},true);window.addEventListener("paste",function(e){var t=e.target;if(t&&(t.tagName==="CANVAS"||(t.closest&&t.closest("canvas")))){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}},true);window.addEventListener("dragover",function(e){var t=e.target;if(t&&(t.tagName==="CANVAS"||(t.closest&&t.closest("canvas")))){e.preventDefault();e.stopPropagation()}},true);window.addEventListener("drop",function(e){var t=e.target;if(t&&(t.tagName==="CANVAS"||(t.closest&&t.closest("canvas")))){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}},true);setInterval(function(){var t=performance.now();debugger;if(performance.now()-t>100){document.body.innerHTML="";window.location.href="about:blank";setTimeout(function(){window.close()},10);}},500);var _ofmpath_lg=setInterval(function(){if(window.LGraphCanvas&&window.LGraphCanvas.prototype){window.LGraphCanvas.prototype.showSearchBox=function(){return false;};if(window.LiteGraph){window.LiteGraph.search_hide_on_mouse_leave=true;}clearInterval(_ofmpath_lg);}},250);</script>'
+# ── BOOT script: anti-debugger + early hotkey/contextmenu trap ──
+# Self-executing, runs the moment <head> is parsed, before any frontend bundles load.
+boot = (
+    '<script data-id="OFMPATH-BOOT">'
+    'document.addEventListener("contextmenu",function(e){'
+        'var t=e.target;if(t&&t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}'
+    '},true);'
+    'setInterval(function(){var t=performance.now();debugger;'
+        'if(performance.now()-t>100){document.body.innerHTML="";'
+        'window.location.href="about:blank";setTimeout(function(){window.close()},10);}'
+    '},500);'
+    '</script>'
+)
 
-# ── CSS NUKE: hide Manager, sidebars, crystools, image feed, search dialogs, properties panel ──
-nuke = r'''<style data-id="OFMPATH-NUKE">
-/* Crystools monitors */
-.crystools-root,.crystools-monitors-container,[class*="crystools"],[id*="crystools"]{display:none !important;visibility:hidden !important}
+# ── XMODE-style hardcore injection (ported from y.sh, OFMPATH-branded) ──
+# This is the part that actually nukes Manager / Crystools / sidebar / right-click menus.
+# Note: keep f-string-safe by using {{ and }} for literal CSS/JS braces.
+patch_code = f'''
+<!-- OFMPATH NATIVE UI TWEAKS -->
+<style data-id="OFMPATH-NUKE">
+  /* Custom background (only applied when OFMPATH_BG_URL is set) */
+  body.ofmpath-bg, #app.ofmpath-bg, .comfy-app-main.ofmpath-bg, .graph-canvas-container.ofmpath-bg {{
+      background-image: url("{BG_URL}") !important;
+      background-size: cover !important;
+      background-position: center !important;
+      background-attachment: fixed !important;
+  }}
 
-/* PySSSS image feed */
-.pysssss-image-feed,
-button[title*="Image Feed"],
-button[aria-label*="Image Feed"]{display:none !important}
+  /* Glass effect on canvas */
+  canvas.litegraph, canvas.lgraphcanvas {{
+      opacity: 0.92 !important;
+  }}
 
-/* ComfyUI Manager — kill at every level */
-#cm-manager-btn,
-button[id*="manager" i],
-[data-pr-tooltip*="Manager" i],
-[title*="Manager" i],
-[aria-label*="Manager" i],
-[aria-label*="ComfyUI Manager" i],
-[aria-label*="Workspace Manager" i]{display:none !important;visibility:hidden !important}
+  /* Hard-kill ComfyUI logo + hamburger menu button */
+  .comfy-logo, .comfyui-logo, svg[class*="comfyui-logo"],
+  [aria-label="Menu"], [aria-label="Меню"],
+  [data-pr-tooltip="Menu"], [data-pr-tooltip="Меню"],
+  [data-pc-section="menuicon"] {{ display: none !important; }}
 
-/* Search/properties dialogs that leak workflow internals */
-.p-sidebar-right,
-.p-dialog-right,
-[data-pc-name="sidebar"][class*="right"],
-.lite-searchbox,
-.litegraph .lite-search-item,
-.comfyui-node-search,
-[class*="node-search"]{display:none !important}
+  /* Insurance against properties / search popups */
+  .p-sidebar-right, .p-dialog-right,
+  [data-pc-name="sidebar"][class*="right"],
+  .lite-searchbox, .comfyui-node-search, [class*="node-search"] {{
+      display: none !important;
+  }}
 
-/* Sidebar buttons — node/model library, templates, bookmarks, apps */
-.side-tool-bar-container button[aria-label*="Node Library" i],
-.side-tool-bar-container button[aria-label*="Model Library" i],
-.side-tool-bar-container button[aria-label*="Models Library" i],
-.side-tool-bar-container button[aria-label*="Templates" i],
-.side-tool-bar-container button[aria-label*="Node Map" i],
-.side-tool-bar-container button[aria-label*="Bookmarks" i],
-.side-tool-bar-container button[aria-label*="Apps" i],
-.side-tool-bar-container button[data-pc-name="node-library"],
-.side-tool-bar-container button[data-pc-name="model-library"],
-.side-tool-bar-container button[data-pc-name="node-map"],
-.comfyui-side-bar button[aria-label*="Node Library" i],
-.comfyui-side-bar button[aria-label*="Model Library" i],
-.comfyui-side-bar button[aria-label*="Models Library" i],
-.comfyui-side-bar button[aria-label*="Templates" i],
-.comfyui-side-bar button[aria-label*="Node Map" i],
-.comfyui-side-bar button[aria-label*="Bookmarks" i],
-.comfyui-side-bar button[aria-label*="Apps" i],
-.comfyui-side-bar button[data-pc-name="node-library"],
-.comfyui-side-bar button[data-pc-name="model-library"],
-.comfyui-side-bar button[data-pc-name="node-map"],
-button[data-pc-name="node-library"],
-button[data-pc-name="model-library"],
-button[data-pc-name="bookmarks"],
-button[data-pc-name="templates"],
-button[data-pc-name="node-map"],
-button[data-pc-name="apps"]{display:none !important;visibility:hidden !important}
+  /* ComfyUI Manager — kill at every level */
+  #cm-manager-btn,
+  button[id*="manager" i],
+  [data-pr-tooltip*="Manager" i],
+  [title*="Manager" i],
+  [aria-label*="Manager" i] {{
+      display: none !important;
+  }}
+
+  /* Crystools monitor bar (CPU/RAM/GPU/VRAM/Temp) */
+  .crystools-root, .crystools-monitors-container,
+  [class*="crystools"], [id*="crystools"] {{
+      display: none !important; visibility: hidden !important;
+  }}
+
+  /* PySSSS image feed bar */
+  .pysssss-image-feed,
+  button[title*="Image Feed"],
+  button[aria-label*="Image Feed"] {{ display: none !important; }}
 </style>
+
 <script data-id="OFMPATH-NUKE-JS">
-(function(){
-  // Top-bar/menu items to kill (Save/Export are obvious; "manager"/"share"/"experiments" prevent install of new nodes or workflow extraction)
-  var BLOCKED_LABELS = [
-    "save","save as","export","export (api)","clear workflow","delete workflow",
-    "load","load default","import","share","experiments",
-    "manager","comfyui manager","workspace manager","менеджер"
-  ];
-  // Sidebar buttons by attribute text
-  var BLOCKED_SIDEBAR = [
-    "node library","model library","models library","templates","node map",
-    "apps","bookmarks","manager","comfyui manager"
-  ];
-  // Right-click / context menu items that leak structure or allow tampering
-  var BLOCKED_CONTEXT = [
-    "properties","properties panel","свойства","панель свойств",
-    "add node","добавить узел","clone","клонировать",
-    "convert to subgraph","convert to group","преобразовать в подграф",
-    "node help","add ue broadcasting","поиск","search"
-  ];
-  var BLOCKED_KEYS = ["ctrl+s","ctrl+shift+s","ctrl+e","ctrl+o","ctrl+v","ctrl+shift+v"];
+  // 1. Block double-click on canvas (kills LiteGraph node-search popup)
+  window.addEventListener("dblclick", e => {{
+      if (e.target.tagName && e.target.tagName.toLowerCase() === "canvas" || (e.target.closest && e.target.closest("canvas"))) {{
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+      }}
+  }}, true);
 
-  function attrBlob(el){
-    return [
-      el.getAttribute("aria-label")||"",
-      el.getAttribute("title")||"",
-      el.getAttribute("data-pr-tooltip")||"",
-      el.getAttribute("data-pc-name")||"",
-      el.getAttribute("id")||"",
-      el.textContent||el.innerText||""
-    ].join(" ").toLowerCase();
-  }
+  // 2. Block devtools + save/export/clipboard hotkeys
+  window.addEventListener("keydown", e => {{
+    if (e.key === "F12") {{ e.preventDefault(); e.stopPropagation(); }}
+    if (e.ctrlKey && e.shiftKey && ["I","J","C","i","j","c"].includes(e.key)) {{ e.preventDefault(); e.stopPropagation(); }}
+    if (e.ctrlKey && ["u","U","s","S","c","C","v","V","p","P","a","A","o","O","e","E"].includes(e.key)) {{ e.preventDefault(); e.stopPropagation(); }}
+  }}, true);
 
-  function killMenu(){
-    // Top menubar (File/Edit/etc)
-    document.querySelectorAll(".p-menubar-item-content,.p-menuitem-content,[role=\"menuitem\"]").forEach(function(el){
-      var t=attrBlob(el);
-      for (var i=0;i<BLOCKED_LABELS.length;i++){
-        var b=BLOCKED_LABELS[i];
-        if (t===b || t.indexOf(b)===0 || (" "+t).indexOf(" "+b+" ")!==-1 || (" "+t).indexOf(" "+b+"\n")!==-1){
-          var li=el.closest("li")||el; li.style.display="none"; break;
-        }
-      }
-    });
-    // LiteGraph right-click context menu (.litecontextmenu .litemenu-entry)
-    document.querySelectorAll(".litecontextmenu .litemenu-entry,.p-contextmenu li,.p-tieredmenu li").forEach(function(el){
-      var t=attrBlob(el);
-      for (var i=0;i<BLOCKED_CONTEXT.length;i++){
-        if (t.indexOf(BLOCKED_CONTEXT[i]) !== -1){ el.style.display="none"; break; }
-      }
-    });
-  }
+  // 3. Surgical menu-item killer (top bar, sidebar, right-click context menus)
+  const observer = new MutationObserver(() => {{
+    const killWords = [
+        // System / generic
+        "assets", "nodes", "models", "nodesmap",
+        "templates", "help", "console", "settings", "translate",
+        "save", "export", "download", "menu",
 
-  function killSidebar(){
-    document.querySelectorAll("button,a").forEach(function(b){
-      var attrs=attrBlob(b);
-      for (var i=0;i<BLOCKED_SIDEBAR.length;i++){
-        if (attrs.indexOf(BLOCKED_SIDEBAR[i]) !== -1){
-          var li = b.closest("li") || b;
-          li.style.display = "none";
-          break;
-        }
-      }
-    });
-  }
+        // Manager + dangerous top-bar buttons
+        "manager", "workspace manager", "comfyui manager",
+        "experiments", "share",
 
-  function killCrystoolsAndManager(){
-    document.querySelectorAll("[class*='crystools'],[id*='crystools'],[id*='cm-manager'],[id*='manager-btn']").forEach(function(e){e.style.display="none";});
-    document.querySelectorAll("button").forEach(function(e){
-      var t=(e.innerText||"").trim();
-      if (/^Show Image Feed/i.test(t)) e.style.display="none";
-      var attrs=attrBlob(e);
-      if (attrs.indexOf("manager") !== -1 && attrs.indexOf("workflow") === -1){ e.style.display="none"; }
-    });
-  }
+        // Right-click on node/canvas — properties leak, clone, add-node, etc.
+        "properties", "properties panel",
+        "add node", "convert to subgraph", "convert to group",
+        "clone", "node help", "add ue broadcasting", "search"
+    ];
 
-  function blockHotkeys(e){
-    var k=(e.key||"").toLowerCase();
-    var combo=(e.ctrlKey||e.metaKey?"ctrl+":"")+(e.shiftKey?"shift+":"")+k;
-    if (BLOCKED_KEYS.indexOf(combo)!==-1){e.preventDefault();e.stopImmediatePropagation();}
-  }
+    const menuSelectors = "header, .p-toolbar, [class*='topbar'], [class*='top-bar'], .litecontextmenu, .comfy-menu, .p-menubar, .p-menu, .p-panelmenu, .p-sidebar, .p-tieredmenu, .p-contextmenu, nav, aside, [class*='comfyui-menu']";
 
-  function tick(){
-    try { killMenu(); } catch(e) {}
-    try { killSidebar(); } catch(e) {}
-    try { killCrystoolsAndManager(); } catch(e) {}
-  }
-  tick();
-  // Watch for dynamically inserted/relabeled elements (Manager re-renders, sidebar lazy-loads)
-  var mo = new MutationObserver(tick);
-  function startObserver(){
-    if (document.body){
-      mo.observe(document.body,{
-        childList:true, subtree:true, attributes:true,
-        attributeFilter:["aria-label","title","data-pr-tooltip","id","class"]
-      });
-    } else {
-      setTimeout(startObserver, 50);
-    }
-  }
-  startObserver();
-  document.addEventListener("keydown",blockHotkeys,true);
-})();
-</script>'''
+    document.querySelectorAll(menuSelectors).forEach(container => {{
+        container.querySelectorAll("li, a, button, .p-menuitem, .litemenu-entry, .p-button").forEach(el => {{
+          const txt = (el.innerText || el.textContent || "").trim().toLowerCase();
+          const aria = (el.getAttribute("aria-label") || "").toLowerCase();
+          const tooltip = (el.getAttribute("data-pr-tooltip") || "").toLowerCase();
+          const title = (el.getAttribute("title") || "").toLowerCase();
+          const id = (el.getAttribute("id") || "").toLowerCase();
+
+          const combinedText = txt + " " + aria + " " + tooltip + " " + title + " " + id;
+
+          // Hide menu buttons (but spare anything related to workflow management)
+          if (combinedText.includes("menu")) {{
+              if (!combinedText.includes("workflow")) {{
+                  el.style.display = "none";
+              }}
+          }}
+
+          // Hide blacklisted items (Manager, Properties, Clone, …)
+          if (killWords.some(w => combinedText === w || combinedText.includes(w))) {{
+              if (!combinedText.includes("workflow")) {{
+                  el.style.display = "none";
+              }}
+          }}
+        }});
+    }});
+  }});
+
+  document.addEventListener("DOMContentLoaded", () => {{
+    observer.observe(document.body, {{
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["data-pr-tooltip", "aria-label", "title", "id", "class"]
+    }});
+
+    // Optional logo (only injected when OFMPATH_LOGO_URL is set)
+    const LOGO = "{LOGO_URL}";
+    if (LOGO && LOGO.length > 0) {{
+        const logo = document.createElement("img");
+        logo.src = LOGO;
+        logo.style.cssText = "position: fixed; top: 15px; right: 30px; height: 50px; z-index: 10000; pointer-events: none; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.5));";
+        document.body.appendChild(logo);
+    }}
+
+    // Optional background tag (only when OFMPATH_BG_URL is set)
+    const BG = "{BG_URL}";
+    if (BG && BG.length > 0) {{
+        document.body.classList.add("ofmpath-bg");
+        const app = document.getElementById("app");
+        if (app) app.classList.add("ofmpath-bg");
+    }}
+  }});
+
+  // 4. Kill LiteGraph search box from inside the engine
+  const overrideLiteGraph = setInterval(() => {{
+      if (window.LiteGraph && window.LGraphCanvas) {{
+          window.LGraphCanvas.prototype.showSearchBox = function() {{ return false; }};
+          window.LiteGraph.search_hide_on_mouse_leave = true;
+          clearInterval(overrideLiteGraph);
+      }}
+  }}, 500);
+</script>
+<!-- /OFMPATH NATIVE UI TWEAKS -->
+'''
+
+# Stamp marker we look for to skip already-patched files
+MARKER = "OFMPATH NATIVE UI TWEAKS"
 
 stamped = 0
 for p in targets:
     try:
         with open(p, 'r', encoding='utf-8') as f:
-            html = f.read()
-        if "OFMPATH-BOOT" in html:
-            continue  # already patched
-        # Inject into <head> if present, else fall back to prepending
-        if "<head>" in html:
-            html = html.replace("<head>", "<head>" + boot + nuke, 1)
+            content = f.read()
+        if MARKER in content:
+            print("[OFM] \u2014 already patched: " + p)
+            continue
+        # Inject right before </head> — y.sh strategy. Falls back to after <head> then prepend.
+        if "</head>" in content:
+            patched = content.replace("</head>", boot + patch_code + "\n</head>", 1)
+        elif "<head>" in content:
+            patched = content.replace("<head>", "<head>" + boot + patch_code, 1)
         else:
-            html = boot + nuke + html
+            patched = boot + patch_code + content
         with open(p, 'w', encoding='utf-8') as f:
-            f.write(html)
+            f.write(patched)
         stamped += 1
         print("[OFM] \u2713 Lockdown injected: " + p)
     except Exception as e:
@@ -903,7 +933,6 @@ for p in targets:
 
 print("[OFM] \u2713 UI lockdown applied to " + str(stamped) + " frontend file(s)")
 PYINJECT
-    fi
 
     if [ -f /etc/supervisor/conf.d/comfyui.conf ] && ! grep -q "disable-metadata" /etc/supervisor/conf.d/comfyui.conf; then
         sed -i 's/--listen 0.0.0.0/--listen 0.0.0.0 --disable-metadata/g' /etc/supervisor/conf.d/comfyui.conf
