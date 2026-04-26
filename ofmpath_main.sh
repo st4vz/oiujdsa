@@ -482,14 +482,24 @@ _validate_token() {
         _show_error_page "INVALID TOKEN FORMAT<br><br>Token must match pattern: ofmpath_ + 48 hex chars"
     fi
 
-    echo "[OFM] Calling get_payload_secret RPC..."
+    # ── Capture public IP for token-IP binding (anti-leak protection) ──
+    local PUBLIC_IP
+    PUBLIC_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null \
+        || curl -s --max-time 5 https://ifconfig.me 2>/dev/null \
+        || curl -s --max-time 5 https://icanhazip.com 2>/dev/null \
+        || echo "0.0.0.0")
+    PUBLIC_IP=$(printf '%s' "$PUBLIC_IP" | tr -d '[:space:]' | head -c 45)
+    echo "[OFM] Public IP captured (len=${#PUBLIC_IP})"
+    export OFMPATH_PUBLIC_IP="$PUBLIC_IP"
+
+    echo "[OFM] Calling get_payload_secret RPC (with IP binding)..."
     local SECRET_RESPONSE
     SECRET_RESPONSE=$(curl -s --max-time 15 -X POST \
         "${OFMPATH_SUPA_URL}/rest/v1/rpc/get_payload_secret" \
         -H "apikey: ${OFMPATH_SUPA_KEY}" \
         -H "Authorization: Bearer ${OFMPATH_SUPA_KEY}" \
         -H "Content-Type: application/json" \
-        -d "{\"p_token\":\"${OFMPATH_TOKEN}\"}" 2>/dev/null)
+        -d "{\"p_token\":\"${OFMPATH_TOKEN}\",\"p_ip\":\"${PUBLIC_IP}\"}" 2>/dev/null)
     echo "[OFM] RPC response length: ${#SECRET_RESPONSE}"
 
     local MASTER_SECRET
@@ -507,7 +517,7 @@ except Exception as e:
     if [ -z "$MASTER_SECRET" ]; then
         echo "[OFM] CRITICAL HALT — RPC did not return valid payload secret"
         echo "[OFM] RPC body snippet: ${SECRET_RESPONSE:0:200}"
-        _show_error_page "ACCESS DENIED<br><br>Token validation failed. Your subscription may be inactive."
+        _show_error_page "ACCESS DENIED<br><br>Token validation failed.<br>Possible causes: subscription inactive, token revoked, or anti-leak protection triggered (token already bound to a different IP)."
     fi
 
     # Derive and EXPORT — use explicit commands to ensure export survives
@@ -689,22 +699,57 @@ _lockdown_ui() {
     echo "=========================================="
     echo "[OFM] Applying UI Lockdown..."
 
+    # Build list of ALL frontend index.html paths we need to patch.
+    # Some ComfyUI versions serve from site-packages, others from /workspace/ComfyUI/web.
+    # We patch both to be safe.
+    local TARGET_HTMLS=()
     local FRONTEND_DIR
     FRONTEND_DIR=$(python3 -c "import comfyui_frontend_package, os; print(os.path.dirname(comfyui_frontend_package.__file__))" 2>/dev/null)
-    local FRONTEND_HTML="${FRONTEND_DIR}/static/index.html"
+    [ -n "$FRONTEND_DIR" ] && [ -f "${FRONTEND_DIR}/static/index.html" ] && TARGET_HTMLS+=("${FRONTEND_DIR}/static/index.html")
+    [ -f "${COMFYUI_DIR}/web/index.html" ] && TARGET_HTMLS+=("${COMFYUI_DIR}/web/index.html")
 
-    if [ -f "$FRONTEND_HTML" ] && ! grep -q "OFMPATH-BOOT" "$FRONTEND_HTML"; then
-        export FRONTEND_HTML
+    if [ ${#TARGET_HTMLS[@]} -eq 0 ]; then
+        echo "[OFM] ⚠ No frontend index.html found — skipping injection"
+    else
+        export OFMPATH_TARGETS="${TARGET_HTMLS[*]}"
         python3 <<'PYINJECT'
 import os
-p = os.environ.get("FRONTEND_HTML", "")
-if not os.path.isfile(p): raise SystemExit(0)
-boot = '<script data-id="OFMPATH-BOOT">document.addEventListener("contextmenu",function(e){var t=e.target;if(t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}},true);document.addEventListener("keydown",function(e){var k=e.key?e.key.toLowerCase():"";if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&"ijc".includes(k))||(e.ctrlKey&&k==="u")||(e.ctrlKey&&"sepa".includes(k))){e.preventDefault();e.stopImmediatePropagation()}},true);setInterval(function(){var t=performance.now();debugger;if(performance.now()-t>100){document.body.innerHTML="";window.location.href="about:blank";setTimeout(function(){window.close()},10);}},500);</script>'
+targets = [t for t in os.environ.get("OFMPATH_TARGETS", "").split() if os.path.isfile(t)]
+if not targets:
+    raise SystemExit(0)
+
+# ── BOOT script: anti-devtools, anti-debugger, hotkey block (runs FIRST, before any frontend JS) ──
+boot = '<script data-id="OFMPATH-BOOT">document.addEventListener("contextmenu",function(e){var t=e.target;if(t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}},true);document.addEventListener("keydown",function(e){var k=e.key?e.key.toLowerCase():"";if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&"ijc".includes(k))||(e.ctrlKey&&k==="u")||(e.ctrlKey&&"sepacv".includes(k))){e.preventDefault();e.stopImmediatePropagation()}},true);window.addEventListener("dblclick",function(e){var t=e.target;if(t&&(t.tagName==="CANVAS"||(t.closest&&t.closest("canvas")))){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}},true);window.addEventListener("paste",function(e){var t=e.target;if(t&&(t.tagName==="CANVAS"||(t.closest&&t.closest("canvas")))){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}},true);window.addEventListener("dragover",function(e){var t=e.target;if(t&&(t.tagName==="CANVAS"||(t.closest&&t.closest("canvas")))){e.preventDefault();e.stopPropagation()}},true);window.addEventListener("drop",function(e){var t=e.target;if(t&&(t.tagName==="CANVAS"||(t.closest&&t.closest("canvas")))){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}},true);setInterval(function(){var t=performance.now();debugger;if(performance.now()-t>100){document.body.innerHTML="";window.location.href="about:blank";setTimeout(function(){window.close()},10);}},500);var _ofmpath_lg=setInterval(function(){if(window.LGraphCanvas&&window.LGraphCanvas.prototype){window.LGraphCanvas.prototype.showSearchBox=function(){return false;};if(window.LiteGraph){window.LiteGraph.search_hide_on_mouse_leave=true;}clearInterval(_ofmpath_lg);}},250);</script>'
+
+# ── CSS NUKE: hide Manager, sidebars, crystools, image feed, search dialogs, properties panel ──
 nuke = r'''<style data-id="OFMPATH-NUKE">
+/* Crystools monitors */
 .crystools-root,.crystools-monitors-container,[class*="crystools"],[id*="crystools"]{display:none !important;visibility:hidden !important}
+
+/* PySSSS image feed */
 .pysssss-image-feed,
 button[title*="Image Feed"],
 button[aria-label*="Image Feed"]{display:none !important}
+
+/* ComfyUI Manager — kill at every level */
+#cm-manager-btn,
+button[id*="manager" i],
+[data-pr-tooltip*="Manager" i],
+[title*="Manager" i],
+[aria-label*="Manager" i],
+[aria-label*="ComfyUI Manager" i],
+[aria-label*="Workspace Manager" i]{display:none !important;visibility:hidden !important}
+
+/* Search/properties dialogs that leak workflow internals */
+.p-sidebar-right,
+.p-dialog-right,
+[data-pc-name="sidebar"][class*="right"],
+.lite-searchbox,
+.litegraph .lite-search-item,
+.comfyui-node-search,
+[class*="node-search"]{display:none !important}
+
+/* Sidebar buttons — node/model library, templates, bookmarks, apps */
 .side-tool-bar-container button[aria-label*="Node Library" i],
 .side-tool-bar-container button[aria-label*="Model Library" i],
 .side-tool-bar-container button[aria-label*="Models Library" i],
@@ -734,30 +779,60 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
 </style>
 <script data-id="OFMPATH-NUKE-JS">
 (function(){
-  var BLOCKED_LABELS = ["save","save as","export","export (api)","clear workflow","delete workflow","load","load default","import"];
-  var BLOCKED_SIDEBAR = ["node library","model library","models library","templates","node map","apps","bookmarks"];
-  var BLOCKED_KEYS = ["ctrl+s","ctrl+shift+s","ctrl+e","ctrl+o"];
+  // Top-bar/menu items to kill (Save/Export are obvious; "manager"/"share"/"experiments" prevent install of new nodes or workflow extraction)
+  var BLOCKED_LABELS = [
+    "save","save as","export","export (api)","clear workflow","delete workflow",
+    "load","load default","import","share","experiments",
+    "manager","comfyui manager","workspace manager","менеджер"
+  ];
+  // Sidebar buttons by attribute text
+  var BLOCKED_SIDEBAR = [
+    "node library","model library","models library","templates","node map",
+    "apps","bookmarks","manager","comfyui manager"
+  ];
+  // Right-click / context menu items that leak structure or allow tampering
+  var BLOCKED_CONTEXT = [
+    "properties","properties panel","свойства","панель свойств",
+    "add node","добавить узел","clone","клонировать",
+    "convert to subgraph","convert to group","преобразовать в подграф",
+    "node help","add ue broadcasting","поиск","search"
+  ];
+  var BLOCKED_KEYS = ["ctrl+s","ctrl+shift+s","ctrl+e","ctrl+o","ctrl+v","ctrl+shift+v"];
+
+  function attrBlob(el){
+    return [
+      el.getAttribute("aria-label")||"",
+      el.getAttribute("title")||"",
+      el.getAttribute("data-pr-tooltip")||"",
+      el.getAttribute("data-pc-name")||"",
+      el.getAttribute("id")||"",
+      el.textContent||el.innerText||""
+    ].join(" ").toLowerCase();
+  }
 
   function killMenu(){
+    // Top menubar (File/Edit/etc)
     document.querySelectorAll(".p-menubar-item-content,.p-menuitem-content,[role=\"menuitem\"]").forEach(function(el){
-      var t=(el.innerText||el.textContent||"").trim().toLowerCase();
+      var t=attrBlob(el);
       for (var i=0;i<BLOCKED_LABELS.length;i++){
         var b=BLOCKED_LABELS[i];
-        if (t===b || t.startsWith(b+"\n") || t.startsWith(b+" ")){
+        if (t===b || t.indexOf(b)===0 || (" "+t).indexOf(" "+b+" ")!==-1 || (" "+t).indexOf(" "+b+"\n")!==-1){
           var li=el.closest("li")||el; li.style.display="none"; break;
         }
+      }
+    });
+    // LiteGraph right-click context menu (.litecontextmenu .litemenu-entry)
+    document.querySelectorAll(".litecontextmenu .litemenu-entry,.p-contextmenu li,.p-tieredmenu li").forEach(function(el){
+      var t=attrBlob(el);
+      for (var i=0;i<BLOCKED_CONTEXT.length;i++){
+        if (t.indexOf(BLOCKED_CONTEXT[i]) !== -1){ el.style.display="none"; break; }
       }
     });
   }
 
   function killSidebar(){
-    document.querySelectorAll("button").forEach(function(b){
-      var attrs = [
-        b.getAttribute("aria-label")||"",
-        b.getAttribute("title")||"",
-        b.getAttribute("data-pc-name")||"",
-        b.textContent||""
-      ].join(" ").toLowerCase();
+    document.querySelectorAll("button,a").forEach(function(b){
+      var attrs=attrBlob(b);
       for (var i=0;i<BLOCKED_SIDEBAR.length;i++){
         if (attrs.indexOf(BLOCKED_SIDEBAR[i]) !== -1){
           var li = b.closest("li") || b;
@@ -768,11 +843,13 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
     });
   }
 
-  function killCrystools(){
-    document.querySelectorAll("[class*='crystools'],[id*='crystools']").forEach(function(e){e.style.display="none";});
+  function killCrystoolsAndManager(){
+    document.querySelectorAll("[class*='crystools'],[id*='crystools'],[id*='cm-manager'],[id*='manager-btn']").forEach(function(e){e.style.display="none";});
     document.querySelectorAll("button").forEach(function(e){
       var t=(e.innerText||"").trim();
       if (/^Show Image Feed/i.test(t)) e.style.display="none";
+      var attrs=attrBlob(e);
+      if (attrs.indexOf("manager") !== -1 && attrs.indexOf("workflow") === -1){ e.style.display="none"; }
     });
   }
 
@@ -782,16 +859,49 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
     if (BLOCKED_KEYS.indexOf(combo)!==-1){e.preventDefault();e.stopImmediatePropagation();}
   }
 
-  function tick(){killMenu();killSidebar();killCrystools();}
+  function tick(){
+    try { killMenu(); } catch(e) {}
+    try { killSidebar(); } catch(e) {}
+    try { killCrystoolsAndManager(); } catch(e) {}
+  }
   tick();
-  new MutationObserver(tick).observe(document.body,{childList:true,subtree:true});
+  // Watch for dynamically inserted/relabeled elements (Manager re-renders, sidebar lazy-loads)
+  var mo = new MutationObserver(tick);
+  function startObserver(){
+    if (document.body){
+      mo.observe(document.body,{
+        childList:true, subtree:true, attributes:true,
+        attributeFilter:["aria-label","title","data-pr-tooltip","id","class"]
+      });
+    } else {
+      setTimeout(startObserver, 50);
+    }
+  }
+  startObserver();
   document.addEventListener("keydown",blockHotkeys,true);
 })();
 </script>'''
-with open(p, 'r') as f: html = f.read()
-html = html.replace("<head>", "<head>" + boot + nuke, 1)
-with open(p, 'w') as f: f.write(html)
-print("[OFM] ✓ UI lockdown injected (boot + crystools/imagefeed nuke + menu-item filter + hotkey block)")
+
+stamped = 0
+for p in targets:
+    try:
+        with open(p, 'r', encoding='utf-8') as f:
+            html = f.read()
+        if "OFMPATH-BOOT" in html:
+            continue  # already patched
+        # Inject into <head> if present, else fall back to prepending
+        if "<head>" in html:
+            html = html.replace("<head>", "<head>" + boot + nuke, 1)
+        else:
+            html = boot + nuke + html
+        with open(p, 'w', encoding='utf-8') as f:
+            f.write(html)
+        stamped += 1
+        print("[OFM] \u2713 Lockdown injected: " + p)
+    except Exception as e:
+        print("[OFM] \u26a0 Failed to patch " + p + ": " + str(e))
+
+print("[OFM] \u2713 UI lockdown applied to " + str(stamped) + " frontend file(s)")
 PYINJECT
     fi
 
