@@ -45,27 +45,37 @@ _start_preloader() {
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { height:100%; overflow-x:hidden; }
+  html,body { height:100%; overflow:hidden; }   /* never scroll the page itself */
   body { background:#0a0a0a; color:#f0e6cf; font-family:'JetBrains Mono','Courier New',monospace;
-         display:flex; justify-content:center; align-items:center; min-height:100vh; position:relative;
-         padding:48px 16px; }
+         display:flex; justify-content:center; align-items:center; height:100vh;
+         position:relative; padding:clamp(8px, 2vh, 32px) 16px; }
   body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:2;
                  background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0,rgba(0,0,0,.35) 1px,transparent 1px,transparent 3px); }
   body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:1;
                 background:radial-gradient(ellipse at 50% 50%, rgba(240,230,207,0.04) 0%, transparent 65%); }
-  .wrap { position:relative; z-index:10; max-width:780px; width:100%; padding:48px 50px 44px;
+
+  /* Wrap fits within viewport — internal scroll only as last-resort fallback */
+  .wrap { position:relative; z-index:10; max-width:780px; width:100%;
+          max-height:calc(100vh - clamp(16px, 4vh, 64px));
+          overflow-y:auto;
+          padding:clamp(16px, 3vh, 48px) clamp(20px, 4vw, 50px) clamp(16px, 2.5vh, 44px);
           background:rgba(15,12,8,0.7); border:1px solid rgba(240,230,207,0.18); border-radius:4px;
           backdrop-filter:blur(8px);
           box-shadow:0 0 60px rgba(240,230,207,0.05), inset 0 0 0 1px rgba(240,230,207,0.06);
-          animation:slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+          animation:slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+          display:flex; flex-direction:column; }
+  /* Hide scrollbar in webkit while still allowing scroll if needed */
+  .wrap::-webkit-scrollbar { width:4px; }
+  .wrap::-webkit-scrollbar-thumb { background:rgba(240,230,207,0.15); border-radius:2px; }
+
   @keyframes slideUp { from { opacity:0; transform:translateY(16px);} to { opacity:1; transform:translateY(0);} }
-  .brand { text-align:center; font-size:12px; letter-spacing:5px; color:#f0e6cf; opacity:.6; margin-bottom:14px; }
-  pre.ascii { font-size:14px; line-height:1.25; color:#faf1d6;
-              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 24px; white-space:pre; text-align:center;
+  .brand { text-align:center; font-size:12px; letter-spacing:5px; color:#f0e6cf; opacity:.6; margin-bottom:clamp(6px, 1vh, 14px); }
+  pre.ascii { font-size:clamp(8px, 1.4vh, 14px); line-height:1.25; color:#faf1d6;
+              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 clamp(10px, 2vh, 24px); white-space:pre; text-align:center;
               font-family:'JetBrains Mono','Courier New',monospace; }
-  .version { text-align:center; font-size:11px; color:#f0e6cf; opacity:.5; letter-spacing:4px; margin-bottom:32px; text-transform:uppercase; }
-  .header-row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
-  .status-badge { display:inline-flex; align-items:center; gap:10px; padding:10px 20px;
+  .version { text-align:center; font-size:11px; color:#f0e6cf; opacity:.5; letter-spacing:4px; margin-bottom:clamp(12px, 2.5vh, 32px); text-transform:uppercase; }
+  .header-row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:clamp(8px, 1.2vh, 14px); flex-wrap:wrap; }
+  .status-badge { display:inline-flex; align-items:center; gap:10px; padding:clamp(6px, 1vh, 10px) 20px;
                   background:rgba(240,230,207,0.05); border:1px solid rgba(240,230,207,0.22); border-radius:3px;
                   font-size:13px; color:#faf1d6; letter-spacing:0.4px; }
   .dot { width:8px; height:8px; border-radius:50%; background:#f5efd6;
@@ -77,18 +87,18 @@ _start_preloader() {
   .bar-fill { height:100%; width:0%; background:linear-gradient(90deg,#f0e6cf,#faf1d6);
               transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 10px rgba(240,230,207,0.4); }
   .bar-label { display:flex; justify-content:space-between; font-size:11px; color:rgba(240,230,207,0.45);
-               letter-spacing:1px; margin-bottom:32px; text-transform:uppercase; }
-  .stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:28px; }
-  .stat { background:rgba(240,230,207,0.04); border:1px solid rgba(240,230,207,0.15); border-radius:3px; padding:20px 18px; }
-  .stat-label { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:10px; }
-  .stat-value { font-size:30px; color:#faf1d6; font-weight:600; line-height:1; }
+               letter-spacing:1px; margin-bottom:clamp(12px, 2.5vh, 32px); text-transform:uppercase; }
+  .stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:clamp(8px, 1.5vh, 14px); margin-bottom:clamp(12px, 2vh, 28px); }
+  .stat { background:rgba(240,230,207,0.04); border:1px solid rgba(240,230,207,0.15); border-radius:3px; padding:clamp(10px, 1.6vh, 20px) clamp(12px, 1.6vw, 18px); }
+  .stat-label { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:clamp(4px, 0.8vh, 10px); }
+  .stat-value { font-size:clamp(20px, 3.5vh, 30px); color:#faf1d6; font-weight:600; line-height:1; }
   .stat-value .sub { font-size:14px; color:rgba(240,230,207,0.4); }
   .stat-hint { font-size:10px; color:rgba(240,230,207,0.4); margin-top:8px; letter-spacing:0.5px; }
   .panel { background:rgba(240,230,207,0.03); border:1px dashed rgba(240,230,207,0.22); border-radius:3px;
-           padding:20px 22px; margin-bottom:20px; }
-  .panel-label { font-size:11px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:18px; }
+           padding:clamp(10px, 1.6vh, 20px) clamp(14px, 1.8vw, 22px); margin-bottom:clamp(10px, 1.6vh, 20px); }
+  .panel-label { font-size:11px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:clamp(8px, 1.4vh, 18px); }
   .ladder { display:flex; gap:8px; font-size:11px; }
-  .rung { flex:1; padding:14px 6px; text-align:center; border-radius:3px; transition:all 0.4s; }
+  .rung { flex:1; padding:clamp(6px, 1vh, 14px) 6px; text-align:center; border-radius:3px; transition:all 0.4s; }
   .rung.future { background:rgba(240,230,207,0.05); color:rgba(240,230,207,0.5); border:1px solid rgba(240,230,207,0.15); }
   .rung.done { background:rgba(240,230,207,0.12); color:#0a0a0a; font-weight:600; }
   .rung.active { background:rgba(240,230,207,0.28); color:#0a0a0a; font-weight:600; box-shadow:0 0 10px rgba(240,230,207,0.3); }
@@ -97,14 +107,14 @@ _start_preloader() {
   .weights-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
   .weights-count { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; }
   .weights-speed { font-size:10px; color:#faf1d6; letter-spacing:0.5px; }
-  .blocks { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:14px; }
+  .blocks { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:clamp(8px, 1.2vh, 14px); }
   .block { width:14px; height:14px; border-radius:2px;
            background:rgba(240,230,207,0.06); border:1px solid rgba(240,230,207,0.2); transition:all 0.3s; }
   .block.filled { background:#f0e6cf; border-color:#f0e6cf; box-shadow:0 0 6px rgba(240,230,207,0.45); }
   .block.loading { background:rgba(240,230,207,0.2); border-color:rgba(240,230,207,0.4); animation:dotPulse 1.3s infinite; }
   .block.failed { background:rgba(201,122,95,0.25); border-color:rgba(201,122,95,0.6); }
   .current-file { font-size:10px; color:rgba(250,241,214,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .footer { text-align:center; font-size:11px; color:rgba(240,230,207,0.25); letter-spacing:4px; margin-top:32px; text-transform:uppercase; }
+  .footer { text-align:center; font-size:11px; color:rgba(240,230,207,0.25); letter-spacing:4px; margin-top:clamp(14px, 2.5vh, 32px); text-transform:uppercase; }
   .error-state .bar-fill { background:#c97a5f !important; box-shadow:0 0 10px #c97a5f; }
   .error-state .status-badge { color:#c97a5f; border-color:rgba(201,122,95,0.4); }
   .error-state .dot { background:#c97a5f; box-shadow:0 0 8px #c97a5f; }
@@ -114,10 +124,36 @@ _start_preloader() {
          cursor:pointer; letter-spacing:2px; font-family:'JetBrains Mono',monospace; text-transform:uppercase;
          box-shadow:0 0 20px rgba(240,230,207,0.3); transition:all .15s; }
   .btn:hover { transform:translateY(-1px); box-shadow:0 0 30px rgba(240,230,207,0.5); }
+
+  /* Narrow screens — stack stats, allow ladder wrap */
   @media (max-width: 540px) {
     .stats { grid-template-columns:repeat(2,1fr); }
     .ladder { flex-wrap:wrap; }
     .rung { min-width:45px; }
+  }
+
+  /* Short viewports (laptop/embedded screens) — drop the ASCII art entirely */
+  @media (max-height: 720px) {
+    pre.ascii { display:none; }
+    .version { margin-bottom:14px; }
+  }
+  /* Very short viewports — also drop the brand line and shrink the panel */
+  @media (max-height: 560px) {
+    .brand, .footer { display:none; }
+    .stat-value { font-size:18px; }
+    .stat-value .sub { font-size:11px; }
+    .stat { padding:8px 12px; }
+    .stat-label { margin-bottom:4px; }
+    .panel { padding:10px 14px; margin-bottom:8px; }
+    .header-row { margin-bottom:8px; }
+    .stats { margin-bottom:10px; }
+    .bar-label { margin-bottom:10px; }
+  }
+  /* Crunch mode — under 440px tall (rare, but possible on iframes/popups) */
+  @media (max-height: 440px) {
+    .panel, .ladder { display:none; }   /* hide phase ladder + nodes panel */
+    .stats { display:none; }            /* hide stat tiles */
+    .version { display:none; }
   }
 </style>
 </head>
@@ -765,6 +801,28 @@ PATCH_TEMPLATE = """
   [title*="Manager" i],
   [aria-label*="Manager" i] { display: none !important; }
 
+  /* Top-toolbar dangerous icon buttons — Unload Models / Free Cache / Share */
+  button[aria-label*="Unload" i],
+  button[aria-label*="Free Models" i],
+  button[aria-label*="Free Model" i],
+  button[aria-label*="Free Cache" i],
+  button[aria-label*="Free Memory" i],
+  button[aria-label*="Free model and node cache" i],
+  button[aria-label*="Free node cache" i],
+  button[aria-label*="Share" i],
+  button[data-pr-tooltip*="Unload" i],
+  button[data-pr-tooltip*="Free Models" i],
+  button[data-pr-tooltip*="Free Model" i],
+  button[data-pr-tooltip*="Free Cache" i],
+  button[data-pr-tooltip*="Free Memory" i],
+  button[data-pr-tooltip*="Share" i],
+  button[title*="Unload" i],
+  button[title*="Free Models" i],
+  button[title*="Free Model" i],
+  button[title*="Free Cache" i],
+  button[title*="Free Memory" i],
+  button[title*="Share" i] { display: none !important; visibility: hidden !important; }
+
   .crystools-root, .crystools-monitors-container,
   [class*="crystools"], [id*="crystools"] { display: none !important; visibility: hidden !important; }
 
@@ -852,7 +910,7 @@ PATCH_TEMPLATE = """
   // because those are workflow-exfiltration vectors.
   var killWords = [
       // Top-bar dropdown items (Graph dropdown, etc.)
-      "rename", "duplicate", "add to bookmarks", "bookmarks",
+      "rename", "duplicate", "add to bookmarks",
       "save", "save as", "save workflow",
       "export", "export (api)", "export workflow", "export api",
       "download", "load", "load default", "import",
@@ -864,18 +922,42 @@ PATCH_TEMPLATE = """
       "blueprints", "subgraph blueprints", "partner nodes", "comfy nodes",
       // Top-bar dangerous buttons
       "manager", "workspace manager", "comfyui manager",
-      "experiments", "share", "menu",
+      "experiments", "share",
+      "unload models", "unload model",
+      "free models", "free model and node cache", "free model", "free node cache",
+      "free memory", "free models and node cache",
+      "menu",
       // Right-click on node/canvas
       "properties", "properties panel",
       "add node", "convert to subgraph", "convert to group",
       "clone", "node help", "add ue broadcasting",
+      // Right-click cosmetic / dangerous node options
+      "title", "mode", "resize", "collapse",
+      "pin", "unpin",
+      "colors", "shapes",
+      "copy (clipspace)", "copy clipspace",
+      "remove",
       // Misc
       "help", "console", "settings", "translate"
   ];
 
   // Phrases that should NEVER hide an element (whitelist for false positives).
-  // E.g. "model library" contains "library" but we don't want to nuke "Workflow Library".
-  var keepIfContains = ["workflow library", "workflows"];
+  // - "workflows" / "workflow library" — top-level user-facing
+  // - "title bar" / "set title" — sometimes labels for KEEP items
+  // - "remove from bookmarks" — would be hidden by "remove" otherwise (we want bookmarks ops working)
+  // - reload/reject/etc — items the user explicitly wanted to keep
+  var keepIfContains = [
+    "workflow library", "workflows",
+    "remove from bookmarks",
+    "reload node", "reset",
+    "bypass",                  // node-functional
+    "swap width", "swap height",
+    "fix node", "recreate",
+    "reject ue links", "ue connectable",
+    "add getnode", "add setnode", "add previewastextnode",
+    "convert all outputs",
+    "open in sam"
+  ];
 
   // Containers to scan. Includes popovers/overlays (Graph dropdown), all sidebars, all menus.
   var menuSelectors = [
