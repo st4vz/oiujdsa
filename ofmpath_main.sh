@@ -771,6 +771,65 @@ PATCH_TEMPLATE = """
   .pysssss-image-feed,
   button[title*="Image Feed"],
   button[aria-label*="Image Feed"] { display: none !important; }
+
+  /* Left-rail sidebar nav buttons — Model Library / Node Library / Templates / Bookmarks / Apps / Workflows-list */
+  .side-tool-bar-container button[aria-label*="model" i],
+  .side-tool-bar-container button[aria-label*="node library" i],
+  .side-tool-bar-container button[aria-label*="nodes" i]:not([aria-label*="workflow" i]),
+  .side-tool-bar-container button[aria-label*="template" i],
+  .side-tool-bar-container button[aria-label*="bookmark" i],
+  .side-tool-bar-container button[aria-label*="apps" i],
+  .side-tool-bar-container button[aria-label*="queue" i],
+  .side-tool-bar-container button[data-pc-name="model-library"],
+  .side-tool-bar-container button[data-pc-name="node-library"],
+  .side-tool-bar-container button[data-pc-name="bookmarks"],
+  .side-tool-bar-container button[data-pc-name="templates"],
+  .side-tool-bar-container button[data-pc-name="apps"],
+  .comfyui-side-bar button[aria-label*="model" i],
+  .comfyui-side-bar button[aria-label*="node library" i],
+  .comfyui-side-bar button[aria-label*="template" i],
+  .comfyui-side-bar button[aria-label*="bookmark" i],
+  .comfyui-side-bar button[aria-label*="apps" i],
+  .comfyui-side-bar button[data-pc-name="model-library"],
+  .comfyui-side-bar button[data-pc-name="node-library"],
+  .comfyui-side-bar button[data-pc-name="bookmarks"],
+  .comfyui-side-bar button[data-pc-name="templates"],
+  .comfyui-side-bar button[data-pc-name="apps"],
+  [class*='side-bar'] button[aria-label*="model" i],
+  [class*='side-bar'] button[aria-label*="node library" i],
+  [class*='side-bar'] button[aria-label*="template" i],
+  [class*='side-bar'] button[aria-label*="bookmark" i] { display: none !important; visibility: hidden !important; }
+
+  /* Sidebar panels themselves — Model Library, Node Library content panes */
+  [class*="model-library"],
+  [class*="node-library"],
+  [class*="ModelLibrary"],
+  [class*="NodeLibrary"],
+  [data-pc-name="model-library"],
+  [data-pc-name="node-library"],
+  [data-pc-name="templates"],
+  [data-pc-name="bookmarks"],
+  [data-pc-name="apps"] { display: none !important; }
+
+  /* Graph-dropdown / popover items — Save / Save As / Export / Export (API) / Rename / Duplicate / Delete / Add to Bookmarks */
+  /* These render as <li> or <div> inside .p-popover or .p-overlaypanel — we use :is() with attribute matching */
+  .p-popover [aria-label="Rename" i],
+  .p-popover [aria-label="Duplicate" i],
+  .p-popover [aria-label="Add to Bookmarks" i],
+  .p-popover [aria-label="Save" i],
+  .p-popover [aria-label="Save As" i],
+  .p-popover [aria-label="Export" i],
+  .p-popover [aria-label*="Export" i],
+  .p-popover [aria-label="Clear Workflow" i],
+  .p-popover [aria-label="Delete Workflow" i],
+  .p-overlaypanel [aria-label="Rename" i],
+  .p-overlaypanel [aria-label="Duplicate" i],
+  .p-overlaypanel [aria-label="Add to Bookmarks" i],
+  .p-overlaypanel [aria-label="Save" i],
+  .p-overlaypanel [aria-label="Save As" i],
+  .p-overlaypanel [aria-label*="Export" i],
+  .p-overlaypanel [aria-label="Clear Workflow" i],
+  .p-overlaypanel [aria-label="Delete Workflow" i] { display: none !important; }
 </style>
 
 <script data-id="OFMPATH-NUKE-JS">
@@ -788,59 +847,133 @@ PATCH_TEMPLATE = """
     if (e.ctrlKey && ["u","U","s","S","c","C","v","V","p","P","a","A","o","O","e","E"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
   }, true);
 
-  // 3. Surgical menu-item killer (top bar, sidebar, right-click context menus)
-  // NOTE: no "workflow" whitelist — we explicitly want to kill Save/Export/Clear/Delete Workflow
+  // 3. Surgical menu-item killer (top bar, sidebar, right-click context menus, popover dropdowns)
+  // NOTE: no "workflow" whitelist — we explicitly kill Save/Export/Clear/Delete Workflow
   // because those are workflow-exfiltration vectors.
   var killWords = [
-      "assets", "nodes", "models", "nodesmap",
-      "templates", "help", "console", "settings", "translate",
+      // Top-bar dropdown items (Graph dropdown, etc.)
+      "rename", "duplicate", "add to bookmarks", "bookmarks",
       "save", "save as", "save workflow",
       "export", "export (api)", "export workflow", "export api",
       "download", "load", "load default", "import",
-      "clear workflow", "delete workflow",
-      "duplicate", "rename", "add to bookmarks",
-      "menu",
+      "clear workflow", "delete workflow", "delete",
+      // Sidebar tabs (Model Library, Nodes, etc.)
+      "model library", "node library", "nodes library",
+      "model browser", "node browser",
+      "models", "nodes", "assets", "templates", "node map", "nodesmap",
+      "blueprints", "subgraph blueprints", "partner nodes", "comfy nodes",
+      // Top-bar dangerous buttons
       "manager", "workspace manager", "comfyui manager",
-      "experiments", "share",
+      "experiments", "share", "menu",
+      // Right-click on node/canvas
       "properties", "properties panel",
       "add node", "convert to subgraph", "convert to group",
-      "clone", "node help", "add ue broadcasting", "search"
+      "clone", "node help", "add ue broadcasting",
+      // Misc
+      "help", "console", "settings", "translate"
   ];
 
-  var menuSelectors = "header, .p-toolbar, [class*='topbar'], [class*='top-bar'], .litecontextmenu, .comfy-menu, .p-menubar, .p-menu, .p-panelmenu, .p-sidebar, .p-tieredmenu, .p-contextmenu, nav, aside, [class*='comfyui-menu'], .p-popover, .p-overlaypanel";
+  // Phrases that should NEVER hide an element (whitelist for false positives).
+  // E.g. "model library" contains "library" but we don't want to nuke "Workflow Library".
+  var keepIfContains = ["workflow library", "workflows"];
+
+  // Containers to scan. Includes popovers/overlays (Graph dropdown), all sidebars, all menus.
+  var menuSelectors = [
+      "header", ".p-toolbar", "[class*='topbar']", "[class*='top-bar']",
+      ".litecontextmenu", ".comfy-menu",
+      ".p-menubar", ".p-menu", ".p-panelmenu", ".p-tieredmenu", ".p-contextmenu",
+      ".p-popover", ".p-popover-content", ".p-overlaypanel", ".p-overlaypanel-content",
+      ".p-sidebar", ".p-sidebar-content",
+      ".side-tool-bar-container", ".comfyui-side-bar",
+      "nav", "aside",
+      "[class*='comfyui-menu']", "[class*='sidebar']",
+      "[role='menu']", "[role='listbox']"
+  ].join(", ");
+
+  // ALL descendants worth checking inside a container.
+  // Includes <div> and role-based selectors because ComfyUI's new nav uses those.
+  var innerSelectors = "li, a, button, div, span, .p-menuitem, .litemenu-entry, .p-button, [role='menuitem'], [role='option'], [role='button'], [role='tab']";
+
+  function shouldHide(blob) {
+    for (var k = 0; k < keepIfContains.length; k++) {
+      if (blob.indexOf(keepIfContains[k]) !== -1) return false;
+    }
+    for (var i = 0; i < killWords.length; i++) {
+      var w = killWords[i];
+      // Match if blob equals word, or contains word as a "token" (surrounded by spaces/start/end)
+      if (blob === w) return true;
+      var idx = blob.indexOf(w);
+      if (idx === -1) continue;
+      var before = idx === 0 ? " " : blob.charAt(idx - 1);
+      var after  = idx + w.length >= blob.length ? " " : blob.charAt(idx + w.length);
+      if (/[\s\(\)\[\]\.,;:|\/]/.test(before) && /[\s\(\)\[\]\.,;:|\/]/.test(after)) return true;
+      // Also match short whole-string buttons where the entire text IS the kill word
+      if (blob.trim() === w) return true;
+    }
+    return false;
+  }
+
+  function elementBlob(el) {
+    return [
+      (el.getAttribute && el.getAttribute("aria-label")) || "",
+      (el.getAttribute && el.getAttribute("title")) || "",
+      (el.getAttribute && el.getAttribute("data-pr-tooltip")) || "",
+      (el.getAttribute && el.getAttribute("data-pc-name")) || "",
+      (el.getAttribute && el.getAttribute("id")) || "",
+      el.innerText || el.textContent || ""
+    ].join(" ").trim().toLowerCase();
+  }
+
+  function hideAndAncestor(el) {
+    // Hide the element itself
+    el.style.display = "none";
+    // ALSO hide its closest <li>, role=menuitem, or role=option — sometimes the
+    // visible row is a parent wrapper, not the element with the text.
+    var parent = el.closest && (el.closest("li") || el.closest("[role='menuitem']") || el.closest("[role='option']") || el.closest(".p-menuitem"));
+    if (parent && parent !== el) parent.style.display = "none";
+  }
 
   function tick() {
     try {
+      // Pass 1: scan inside known menu containers
       document.querySelectorAll(menuSelectors).forEach(function(container) {
-        container.querySelectorAll("li, a, button, .p-menuitem, .litemenu-entry, .p-button").forEach(function(el) {
-          var txt     = (el.innerText || el.textContent || "").trim().toLowerCase();
-          var aria    = (el.getAttribute("aria-label") || "").toLowerCase();
-          var tooltip = (el.getAttribute("data-pr-tooltip") || "").toLowerCase();
-          var title   = (el.getAttribute("title") || "").toLowerCase();
-          var id      = (el.getAttribute("id") || "").toLowerCase();
-          var blob = txt + " " + aria + " " + tooltip + " " + title + " " + id;
-
-          for (var i = 0; i < killWords.length; i++) {
-            var w = killWords[i];
-            if (blob === w || blob.indexOf(w) !== -1) {
-              el.style.display = "none";
-              break;
-            }
-          }
+        container.querySelectorAll(innerSelectors).forEach(function(el) {
+          // Skip elements that are themselves containers of MANY children (avoid nuking entire panels here)
+          if (el.children && el.children.length > 8) return;
+          var blob = elementBlob(el);
+          if (!blob) return;
+          if (shouldHide(blob)) hideAndAncestor(el);
         });
       });
 
-      // Fallback scan: ANY button matching killWords, anywhere in the DOM
+      // Pass 2: kill entire sidebar panels (Model Library, Nodes browser) — these
+      // render as <aside>/<div> with a header containing the panel name.
+      document.querySelectorAll("aside, [class*='sidebar'], .p-sidebar, [class*='side-bar'], [data-pc-name='sidebar']").forEach(function(panel) {
+        // Find a header/title element inside the panel
+        var headers = panel.querySelectorAll("h1, h2, h3, h4, [class*='title'], [class*='header']");
+        for (var h = 0; h < headers.length; h++) {
+          var blob = (headers[h].innerText || headers[h].textContent || "").trim().toLowerCase();
+          if (blob === "nodes" || blob === "model library" || blob === "node library" ||
+              blob === "models" || blob === "models library" || blob === "nodes library" ||
+              blob === "templates" || blob === "node map" || blob === "bookmarks" || blob === "manager") {
+            panel.style.display = "none";
+            break;
+          }
+        }
+      });
+
+      // Pass 3: kill sidebar nav rail buttons (the icons that open Nodes/Models/etc panels).
+      // These live in .side-tool-bar-container or [class*='side-bar'] as buttons.
+      document.querySelectorAll(".side-tool-bar-container button, .comfyui-side-bar button, [class*='side-bar'] button, [class*='sidebar'] button").forEach(function(btn) {
+        var blob = elementBlob(btn);
+        if (shouldHide(blob)) hideAndAncestor(btn);
+      });
+
+      // Pass 4: global fallback — any button/link with manager/crystools text anywhere
       document.querySelectorAll("button, a").forEach(function(el) {
-        var blob = (
-          (el.getAttribute("aria-label") || "") + " " +
-          (el.getAttribute("title") || "") + " " +
-          (el.getAttribute("data-pr-tooltip") || "") + " " +
-          (el.getAttribute("id") || "") + " " +
-          (el.innerText || el.textContent || "")
-        ).toLowerCase();
+        var blob = elementBlob(el);
         if (blob.indexOf("manager") !== -1 || blob.indexOf("crystools") !== -1) {
-          el.style.display = "none";
+          hideAndAncestor(el);
         }
       });
     } catch (e) {}
