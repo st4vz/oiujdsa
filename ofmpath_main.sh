@@ -61,10 +61,10 @@ _start_preloader() {
   @keyframes slideUp { from { opacity:0; transform:translateY(16px);} to { opacity:1; transform:translateY(0);} }
   .brand { text-align:center; font-size:12px; letter-spacing:5px; color:#f0e6cf; opacity:.6; margin-bottom:14px; }
   pre.ascii { font-size:14px; line-height:1.25; color:#faf1d6;
-              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 24px; white-space:pre; text-align:center;
+              text-shadow:0 0 12px rgba(255,245,221,.4); margin:0 0 24px; white-space:pre; text-align:center;
               font-family:'JetBrains Mono','Courier New',monospace; }
   .version { text-align:center; font-size:11px; color:#f0e6cf; opacity:.5; letter-spacing:4px; margin-bottom:32px; text-transform:uppercase; }
-  .header-row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .header-row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
   .status-badge { display:inline-flex; align-items:center; gap:10px; padding:10px 20px;
                   background:rgba(240,230,207,0.05); border:1px solid rgba(240,230,207,0.22); border-radius:3px;
                   font-size:13px; color:#faf1d6; letter-spacing:0.4px; }
@@ -77,7 +77,7 @@ _start_preloader() {
   .bar-fill { height:100%; width:0%; background:linear-gradient(90deg,#f0e6cf,#faf1d6);
               transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 10px rgba(240,230,207,0.4); }
   .bar-label { display:flex; justify-content:space-between; font-size:11px; color:rgba(240,230,207,0.45);
-               letter-spacing:1px; margin-bottom:32px; text-transform:uppercase; }
+               letter-spacing:1.5px; margin-bottom:32px; text-transform:uppercase; }
   .stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:28px; }
   .stat { background:rgba(240,230,207,0.04); border:1px solid rgba(240,230,207,0.15); border-radius:3px; padding:20px 18px; }
   .stat-label { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:10px; }
@@ -94,16 +94,16 @@ _start_preloader() {
   .rung.active { background:rgba(240,230,207,0.28); color:#0a0a0a; font-weight:600; box-shadow:0 0 10px rgba(240,230,207,0.3); }
   .rung .code { font-size:9px; letter-spacing:1.5px; opacity:0.6; display:block; margin-bottom:5px; }
   .rung.done .code, .rung.active .code { color:rgba(10,10,10,0.6); opacity:1; }
-  .weights-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-  .weights-count { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; }
-  .weights-speed { font-size:10px; color:#faf1d6; letter-spacing:0.5px; }
+  .weights-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .weights-count { font-size:11px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; }
+  .weights-speed { font-size:11px; color:#faf1d6; letter-spacing:0.5px; }
   .blocks { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:14px; }
   .block { width:14px; height:14px; border-radius:2px;
            background:rgba(240,230,207,0.06); border:1px solid rgba(240,230,207,0.2); transition:all 0.3s; }
   .block.filled { background:#f0e6cf; border-color:#f0e6cf; box-shadow:0 0 6px rgba(240,230,207,0.45); }
   .block.loading { background:rgba(240,230,207,0.2); border-color:rgba(240,230,207,0.4); animation:dotPulse 1.3s infinite; }
   .block.failed { background:rgba(201,122,95,0.25); border-color:rgba(201,122,95,0.6); }
-  .current-file { font-size:10px; color:rgba(250,241,214,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .current-file { font-size:11px; color:rgba(250,241,214,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .footer { text-align:center; font-size:11px; color:rgba(240,230,207,0.25); letter-spacing:4px; margin-top:32px; text-transform:uppercase; }
   .error-state .bar-fill { background:#c97a5f !important; box-shadow:0 0 10px #c97a5f; }
   .error-state .status-badge { color:#c97a5f; border-color:rgba(201,122,95,0.4); }
@@ -223,11 +223,12 @@ _start_preloader() {
 
   // ── Phase tracker ──
   const PHASE_ORDER = ["INIT","B","C","D"];
+  // Map internal log phase letters to UI ladder positions
   function mapPhase(internal) {
-    if (internal === "A") return "INIT";
-    if (internal === "B") return "B";
-    if (internal === "C") return "C";
-    if (internal === "D" || internal === "E" || internal === "F") return "D";
+    if (internal === "A") return "INIT";   // workflow fetch is part of "Initializing"
+    if (internal === "B") return "B";      // nodes
+    if (internal === "C") return "C";      // models
+    if (internal === "D" || internal === "E" || internal === "F") return "D"; // deploy + settings + inventory
     return "INIT";
   }
   function setPhase(active) {
@@ -243,6 +244,28 @@ _start_preloader() {
     });
   }
 
+  // ── Model size estimates (GB) — approximate so "Data" shows realistic growth ──
+  // Weighted by what actually downloads. Total ≈ 75 GB ish. Maps by LABEL from [STARTING] 'label'.
+  const MODEL_SIZES = {
+    z_image_bf16: 12, z_image_fp8: 7, wan_diffusion: 27,
+    qwen3_4b: 4.2, umt5xxl: 5.1, text_enc: 2.5,
+    clip_vision_k: 1.3, clip_vision_h: 1.3,
+    vae_ae: 0.3, vae_wan: 0.5,
+    ctrl_wan: 1.3, ctrl_zimg: 0.9,
+    ckpt_detect: 3.0,
+    lora_real: 0.15, lora_xxx: 0.15, lora_gpu: 0.15, lora_wanfun: 0.8,
+    lora_light: 0.4, lora_pusa: 0.5, lora_wanrw: 0.6,
+    det_yolo: 0.06, det_vitpose_data: 1.2, det_vitpose_model: 0.4,
+    sam_vit_b: 0.4, upscaler: 0.07,
+    bbox_face: 0.023, bbox_body: 0.11, bbox_breast: 0.023, bbox_nipples: 0.023,
+    bbox_vagina: 0.023, bbox_ass: 0.023, bbox_eyes_v2: 0.023, bbox_eyes: 0.023,
+    bbox_faces: 0.023, bbox_hand: 0.023, bbox_foot: 0.05,
+    qwen_added: 0.00001, qwen_chat: 0.00001, qwen_config: 0.00001, qwen_gen: 0.00001,
+    qwen_merges: 0.002, qwen_idx: 0.00005, qwen_pre: 0.00001, qwen_spc: 0.00001,
+    qwen_tok: 0.012, qwen_tokcfg: 0.00001, qwen_vocab: 0.003,
+    qwen_shard1: 4.0, qwen_shard2: 4.0,
+  };
+
   // ── Main state parsed from install.log ──
   const state = {
     nodesDone: 0, modelsDone: 0, modelsFailed: 0,
@@ -251,14 +274,8 @@ _start_preloader() {
     lastLogSize: 0,
     recentBytesPerSec: 0,
     lastModelTs: null, lastModelLabel: null,
-    loggedLines: new Set(),
     handoffStarted: false,
   };
-
-  function nowHHMM() {
-    const d = new Date();
-    return String(d.getHours()).padStart(2,'0') + ":" + String(d.getMinutes()).padStart(2,'0');
-  }
 
   // ── Handoff detection ──
   setInterval(async () => {
@@ -275,7 +292,6 @@ _start_preloader() {
     document.getElementById("pct-text").textContent = "100%";
     document.getElementById("status-text").textContent = "Starting ComfyUI...";
     document.getElementById("weights-speed").textContent = "";
-    setPhase("F");
     document.querySelectorAll(".rung").forEach(r => {
       r.classList.remove("future","active"); r.classList.add("done");
     });
@@ -339,12 +355,14 @@ _start_preloader() {
 
       // Walk the log in order to reconstruct state
       let successes = 0, failures = 0, currentLabel = null;
+      let dataGB = 0;
       for (const l of lines) {
         const startM = l.match(/\[STARTING\]\s*'([^']+)'/);
         if (startM) currentLabel = startM[1];
         if (l.includes("[SUCCESS]") && currentLabel) {
           successes++;
-          currentLabel = null;
+          if (MODEL_SIZES[currentLabel] !== undefined) dataGB += MODEL_SIZES[currentLabel];
+          currentLabel = null; // clear after resolution
         }
         if (l.indexOf("[FAILED]") === 0 || l.indexOf("[FAILED] ") === 0 || /^\[FAILED\]/.test(l)) {
           failures++;
@@ -369,15 +387,20 @@ _start_preloader() {
         b.className = "block";
         if (i < successes) b.classList.add("filled");
         else if (i === successes && currentLabel) b.classList.add("loading");
+        else if (i < successes + failures + (currentLabel ? 1 : 0) && i >= successes) {
+          // can't distinguish which failed; leave as future
+        }
       }
 
       // Current file + speed
       if (currentLabel) {
         document.getElementById("current-file").textContent = "\u25b8 " + currentLabel;
+        // Fake-ish speed readout based on time since last SUCCESS
         const nowTs = Date.now();
         if (state.lastModelTs && state.lastModelLabel !== currentLabel) {
           const dt = (nowTs - state.lastModelTs) / 1000;
-          const mbps = 512 / Math.max(dt, 2);
+          const szGB = MODEL_SIZES[state.lastModelLabel] || 0.5;
+          const mbps = (szGB * 1024) / Math.max(dt, 2);
           if (mbps > 0.1 && mbps < 500) state.recentBytesPerSec = mbps;
         }
         state.lastModelTs = state.lastModelTs || nowTs;
@@ -401,6 +424,7 @@ _start_preloader() {
         document.getElementById("eta").innerHTML = "~" + mins + '<span class="sub"> min</span>';
       }
 
+
       // ── Status text: pick from most recent significant line ──
       const statusEl = document.getElementById("status-text");
       if (text.includes("ACCESS DENIED") || text.includes("TOKEN REJECTED") || text.includes("LICENSE DENIED") || text.includes("AUTH ERROR") || text.includes("CRITICAL HALT")) {
@@ -413,11 +437,11 @@ _start_preloader() {
       } else {
         for (let i = lines.length - 1; i >= 0; i--) {
           const l = lines[i];
-          if (l.includes("UI Lockdown") || l.match(/Phase F/) || l.match(/Phase E/)) { statusEl.textContent = "Finalizing deployment \u00b7 Phase D"; break; }
+          if (l.includes("UI Lockdown")) { statusEl.textContent = "Applying UI protection \u00b7 Phase F"; break; }
           else if (l.includes("Deploy workflow") || l.match(/Phase D/)) { statusEl.textContent = "Deploying workflows \u00b7 Phase D"; break; }
           else if (l.match(/Phase C/) || l.includes("Found") && l.includes("models")) { statusEl.textContent = "Downloading model weights \u00b7 Phase C"; break; }
           else if (l.match(/Phase B/) || l.includes("install_node")) { statusEl.textContent = "Installing custom nodes \u00b7 Phase B"; break; }
-          else if (l.match(/Phase A/)) { statusEl.textContent = "Initializing \u00b7 Phase INIT"; break; }
+          else if (l.match(/Phase A/)) { statusEl.textContent = "Fetching workflows \u00b7 Phase A"; break; }
           else if (l.includes("Validating token")) { statusEl.textContent = "Verifying license"; break; }
           else if (l.includes("ComfyUI base") || l.includes("Waiting for")) { statusEl.textContent = "Building ComfyUI core"; break; }
         }
@@ -699,12 +723,13 @@ _lockdown_ui() {
 import os
 p = os.environ.get("FRONTEND_HTML", "")
 if not os.path.isfile(p): raise SystemExit(0)
-boot = '<script data-id="OFMPATH-BOOT">document.addEventListener("contextmenu",function(e){var t=e.target;if(t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}},true);document.addEventListener("keydown",function(e){var k=e.key?e.key.toLowerCase():"";if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&"ijc".includes(k))||(e.ctrlKey&&k==="u")||(e.ctrlKey&&"sepa".includes(k))){e.preventDefault();e.stopImmediatePropagation()}},true);setInterval(function(){var t=performance.now();debugger;if(performance.now()-t>100){document.body.innerHTML="";window.location.href="about:blank";setTimeout(function(){window.close()},10);}},500);</script>'
+
+boot = r'''<script data-id="OFMPATH-BOOT">document.addEventListener("contextmenu",function(e){var t=e.target;if(t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}},true);document.addEventListener("keydown",function(e){var k=e.key?e.key.toLowerCase():"";if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&"ijc".includes(k))||(e.ctrlKey&&k==="u")||(e.ctrlKey&&"sepa".includes(k))){e.preventDefault();e.stopImmediatePropagation()}},true);setInterval(function(){var t=performance.now();debugger;if(performance.now()-t>100){document.body.innerHTML="";window.location.href="about:blank";setTimeout(function(){window.close()},10);}},500);</script>'''
+
 nuke = r'''<style data-id="OFMPATH-NUKE">
 .crystools-root,.crystools-monitors-container,[class*="crystools"],[id*="crystools"]{display:none !important;visibility:hidden !important}
-.pysssss-image-feed,
-button[title*="Image Feed"],
-button[aria-label*="Image Feed"]{display:none !important}
+.pysssss-image-feed,button[title*="Image Feed"],button[aria-label*="Image Feed"]{display:none !important}
+/* Hide unwanted left-sidebar tabs by aria-label / data-pc-name attributes */
 .side-tool-bar-container button[aria-label*="Node Library" i],
 .side-tool-bar-container button[aria-label*="Model Library" i],
 .side-tool-bar-container button[aria-label*="Models Library" i],
@@ -712,9 +737,6 @@ button[aria-label*="Image Feed"]{display:none !important}
 .side-tool-bar-container button[aria-label*="Node Map" i],
 .side-tool-bar-container button[aria-label*="Bookmarks" i],
 .side-tool-bar-container button[aria-label*="Apps" i],
-.side-tool-bar-container button[data-pc-name="node-library"],
-.side-tool-bar-container button[data-pc-name="model-library"],
-.side-tool-bar-container button[data-pc-name="node-map"],
 .comfyui-side-bar button[aria-label*="Node Library" i],
 .comfyui-side-bar button[aria-label*="Model Library" i],
 .comfyui-side-bar button[aria-label*="Models Library" i],
@@ -722,9 +744,6 @@ button[aria-label*="Image Feed"]{display:none !important}
 .comfyui-side-bar button[aria-label*="Node Map" i],
 .comfyui-side-bar button[aria-label*="Bookmarks" i],
 .comfyui-side-bar button[aria-label*="Apps" i],
-.comfyui-side-bar button[data-pc-name="node-library"],
-.comfyui-side-bar button[data-pc-name="model-library"],
-.comfyui-side-bar button[data-pc-name="node-map"],
 button[data-pc-name="node-library"],
 button[data-pc-name="model-library"],
 button[data-pc-name="bookmarks"],
@@ -751,6 +770,7 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
   }
 
   function killSidebar(){
+    // Walk every button and hide if its tooltip / aria / title matches a blocked sidebar tab
     document.querySelectorAll("button").forEach(function(b){
       var attrs = [
         b.getAttribute("aria-label")||"",
@@ -760,6 +780,7 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
       ].join(" ").toLowerCase();
       for (var i=0;i<BLOCKED_SIDEBAR.length;i++){
         if (attrs.indexOf(BLOCKED_SIDEBAR[i]) !== -1){
+          // Hide the entire tab wrapper (the LI or the button itself)
           var li = b.closest("li") || b;
           li.style.display = "none";
           break;
@@ -788,6 +809,7 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
   document.addEventListener("keydown",blockHotkeys,true);
 })();
 </script>'''
+
 with open(p, 'r') as f: html = f.read()
 html = html.replace("<head>", "<head>" + boot + nuke, 1)
 with open(p, 'w') as f: f.write(html)
