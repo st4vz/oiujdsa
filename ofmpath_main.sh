@@ -697,48 +697,36 @@ _run_fallback_installer() {
 _lockdown_ui() {
     echo "[PROGRESS: 92]"
     echo "=========================================="
-    echo "[OFM] Applying UI Lockdown (OFMPATH hardcore injection)..."
+    echo "[OFM] Installing persistent UI Lockdown watcher..."
 
     # Optional branding (set via env vars in your Vast.ai template if you host your own).
-    # When empty the JS no-ops the logo/background — no broken images.
     export OFMPATH_LOGO_URL="${OFMPATH_LOGO_URL:-}"
     export OFMPATH_BG_URL="${OFMPATH_BG_URL:-}"
-    export COMFYUI_DIR="$COMFYUI_DIR"
 
-    python3 <<'PYINJECT'
-import os, site
+    # ── Write the watcher script to /usr/local/bin ──
+    # This script keeps re-patching on a loop. Why a loop:
+    # • At provisioning time, comfyui_frontend_package may not be installed yet
+    #   (ComfyUI fetches it on first launch via uv).
+    # • ComfyUI startup runs `uv sync` which can REINSTALL the frontend wheel,
+    #   wiping any earlier patch.
+    # • The watcher catches both cases — runs every N seconds, re-injects if the
+    #   marker is missing.
+    cat > /usr/local/bin/ofmpath_lockdown.py << 'WATCHER_EOF'
+#!/usr/bin/env python3
+"""OFMPATH UI lockdown watcher — keeps comfyui_frontend_package and
+ComfyUI/web index.html patched even after pip/uv reinstalls the wheel."""
+import os
+import site
+import sys
+import time
 
-LOGO_URL = os.environ.get("OFMPATH_LOGO_URL", "") or ""
-BG_URL   = os.environ.get("OFMPATH_BG_URL",   "") or ""
+LOGO_URL    = os.environ.get("OFMPATH_LOGO_URL", "") or ""
+BG_URL      = os.environ.get("OFMPATH_BG_URL",   "") or ""
 COMFYUI_DIR = os.environ.get("COMFYUI_DIR", "/workspace/ComfyUI")
+INTERVAL    = int(os.environ.get("OFMPATH_WATCHER_INTERVAL", "10"))
+MARKER      = "OFMPATH NATIVE UI TWEAKS"
 
-# ── Discover EVERY plausible frontend index.html on disk ──
-# Some Vast images split site-packages between /venv, /opt/venv, system Python and user-site.
-# Patch them all.
-candidates = []
-try:
-    for sp in site.getsitepackages():
-        candidates.append(os.path.join(sp, "comfyui_frontend_package", "static", "index.html"))
-except Exception:
-    pass
-try:
-    candidates.append(os.path.join(site.getusersitepackages(), "comfyui_frontend_package", "static", "index.html"))
-except Exception:
-    pass
-candidates.append(os.path.join(COMFYUI_DIR, "web", "index.html"))
-
-seen = set(); targets = []
-for p in candidates:
-    if p and p not in seen and os.path.isfile(p):
-        seen.add(p); targets.append(p)
-
-if not targets:
-    print("[OFM] \u26a0 No frontend index.html found anywhere — skipping injection")
-    raise SystemExit(0)
-
-# ── BOOT script: anti-debugger + early hotkey/contextmenu trap ──
-# Self-executing, runs the moment <head> is parsed, before any frontend bundles load.
-boot = (
+BOOT = (
     '<script data-id="OFMPATH-BOOT">'
     'document.addEventListener("contextmenu",function(e){'
         'var t=e.target;if(t&&t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}'
@@ -750,189 +738,265 @@ boot = (
     '</script>'
 )
 
-# ── XMODE-style hardcore injection (ported from y.sh, OFMPATH-branded) ──
-# This is the part that actually nukes Manager / Crystools / sidebar / right-click menus.
-# Note: keep f-string-safe by using {{ and }} for literal CSS/JS braces.
-patch_code = f'''
+# Build patch_code with simple .format() — no f-string brace headaches
+# Note: CSS/JS literal braces stay as { }, only {LOGO_URL} and {BG_URL} are placeholders.
+PATCH_TEMPLATE = """
 <!-- OFMPATH NATIVE UI TWEAKS -->
 <style data-id="OFMPATH-NUKE">
-  /* Custom background (only applied when OFMPATH_BG_URL is set) */
-  body.ofmpath-bg, #app.ofmpath-bg, .comfy-app-main.ofmpath-bg, .graph-canvas-container.ofmpath-bg {{
-      background-image: url("{BG_URL}") !important;
+  body.ofmpath-bg, #app.ofmpath-bg, .comfy-app-main.ofmpath-bg, .graph-canvas-container.ofmpath-bg {
+      background-image: url("__BG_URL__") !important;
       background-size: cover !important;
       background-position: center !important;
       background-attachment: fixed !important;
-  }}
+  }
+  canvas.litegraph, canvas.lgraphcanvas { opacity: 0.92 !important; }
 
-  /* Glass effect on canvas */
-  canvas.litegraph, canvas.lgraphcanvas {{
-      opacity: 0.92 !important;
-  }}
-
-  /* Hard-kill ComfyUI logo + hamburger menu button */
   .comfy-logo, .comfyui-logo, svg[class*="comfyui-logo"],
-  [aria-label="Menu"], [aria-label="Меню"],
-  [data-pr-tooltip="Menu"], [data-pr-tooltip="Меню"],
-  [data-pc-section="menuicon"] {{ display: none !important; }}
+  [aria-label="Menu"], [data-pr-tooltip="Menu"],
+  [data-pc-section="menuicon"] { display: none !important; }
 
-  /* Insurance against properties / search popups */
   .p-sidebar-right, .p-dialog-right,
   [data-pc-name="sidebar"][class*="right"],
-  .lite-searchbox, .comfyui-node-search, [class*="node-search"] {{
-      display: none !important;
-  }}
+  .lite-searchbox, .comfyui-node-search, [class*="node-search"] { display: none !important; }
 
-  /* ComfyUI Manager — kill at every level */
   #cm-manager-btn,
   button[id*="manager" i],
   [data-pr-tooltip*="Manager" i],
   [title*="Manager" i],
-  [aria-label*="Manager" i] {{
-      display: none !important;
-  }}
+  [aria-label*="Manager" i] { display: none !important; }
 
-  /* Crystools monitor bar (CPU/RAM/GPU/VRAM/Temp) */
   .crystools-root, .crystools-monitors-container,
-  [class*="crystools"], [id*="crystools"] {{
-      display: none !important; visibility: hidden !important;
-  }}
+  [class*="crystools"], [id*="crystools"] { display: none !important; visibility: hidden !important; }
 
-  /* PySSSS image feed bar */
   .pysssss-image-feed,
   button[title*="Image Feed"],
-  button[aria-label*="Image Feed"] {{ display: none !important; }}
+  button[aria-label*="Image Feed"] { display: none !important; }
 </style>
 
 <script data-id="OFMPATH-NUKE-JS">
   // 1. Block double-click on canvas (kills LiteGraph node-search popup)
-  window.addEventListener("dblclick", e => {{
-      if (e.target.tagName && e.target.tagName.toLowerCase() === "canvas" || (e.target.closest && e.target.closest("canvas"))) {{
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-      }}
-  }}, true);
+  window.addEventListener("dblclick", function(e) {
+      if ((e.target.tagName && e.target.tagName.toLowerCase() === "canvas") || (e.target.closest && e.target.closest("canvas"))) {
+          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      }
+  }, true);
 
   // 2. Block devtools + save/export/clipboard hotkeys
-  window.addEventListener("keydown", e => {{
-    if (e.key === "F12") {{ e.preventDefault(); e.stopPropagation(); }}
-    if (e.ctrlKey && e.shiftKey && ["I","J","C","i","j","c"].includes(e.key)) {{ e.preventDefault(); e.stopPropagation(); }}
-    if (e.ctrlKey && ["u","U","s","S","c","C","v","V","p","P","a","A","o","O","e","E"].includes(e.key)) {{ e.preventDefault(); e.stopPropagation(); }}
-  }}, true);
+  window.addEventListener("keydown", function(e) {
+    if (e.key === "F12") { e.preventDefault(); e.stopPropagation(); }
+    if (e.ctrlKey && e.shiftKey && ["I","J","C","i","j","c"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
+    if (e.ctrlKey && ["u","U","s","S","c","C","v","V","p","P","a","A","o","O","e","E"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
 
   // 3. Surgical menu-item killer (top bar, sidebar, right-click context menus)
-  const observer = new MutationObserver(() => {{
-    const killWords = [
-        // System / generic
-        "assets", "nodes", "models", "nodesmap",
-        "templates", "help", "console", "settings", "translate",
-        "save", "export", "download", "menu",
+  // NOTE: no "workflow" whitelist — we explicitly want to kill Save/Export/Clear/Delete Workflow
+  // because those are workflow-exfiltration vectors.
+  var killWords = [
+      "assets", "nodes", "models", "nodesmap",
+      "templates", "help", "console", "settings", "translate",
+      "save", "save as", "save workflow",
+      "export", "export (api)", "export workflow", "export api",
+      "download", "load", "load default", "import",
+      "clear workflow", "delete workflow",
+      "duplicate", "rename", "add to bookmarks",
+      "menu",
+      "manager", "workspace manager", "comfyui manager",
+      "experiments", "share",
+      "properties", "properties panel",
+      "add node", "convert to subgraph", "convert to group",
+      "clone", "node help", "add ue broadcasting", "search"
+  ];
 
-        // Manager + dangerous top-bar buttons
-        "manager", "workspace manager", "comfyui manager",
-        "experiments", "share",
+  var menuSelectors = "header, .p-toolbar, [class*='topbar'], [class*='top-bar'], .litecontextmenu, .comfy-menu, .p-menubar, .p-menu, .p-panelmenu, .p-sidebar, .p-tieredmenu, .p-contextmenu, nav, aside, [class*='comfyui-menu'], .p-popover, .p-overlaypanel";
 
-        // Right-click on node/canvas — properties leak, clone, add-node, etc.
-        "properties", "properties panel",
-        "add node", "convert to subgraph", "convert to group",
-        "clone", "node help", "add ue broadcasting", "search"
-    ];
+  function tick() {
+    try {
+      document.querySelectorAll(menuSelectors).forEach(function(container) {
+        container.querySelectorAll("li, a, button, .p-menuitem, .litemenu-entry, .p-button").forEach(function(el) {
+          var txt     = (el.innerText || el.textContent || "").trim().toLowerCase();
+          var aria    = (el.getAttribute("aria-label") || "").toLowerCase();
+          var tooltip = (el.getAttribute("data-pr-tooltip") || "").toLowerCase();
+          var title   = (el.getAttribute("title") || "").toLowerCase();
+          var id      = (el.getAttribute("id") || "").toLowerCase();
+          var blob = txt + " " + aria + " " + tooltip + " " + title + " " + id;
 
-    const menuSelectors = "header, .p-toolbar, [class*='topbar'], [class*='top-bar'], .litecontextmenu, .comfy-menu, .p-menubar, .p-menu, .p-panelmenu, .p-sidebar, .p-tieredmenu, .p-contextmenu, nav, aside, [class*='comfyui-menu']";
+          for (var i = 0; i < killWords.length; i++) {
+            var w = killWords[i];
+            if (blob === w || blob.indexOf(w) !== -1) {
+              el.style.display = "none";
+              break;
+            }
+          }
+        });
+      });
 
-    document.querySelectorAll(menuSelectors).forEach(container => {{
-        container.querySelectorAll("li, a, button, .p-menuitem, .litemenu-entry, .p-button").forEach(el => {{
-          const txt = (el.innerText || el.textContent || "").trim().toLowerCase();
-          const aria = (el.getAttribute("aria-label") || "").toLowerCase();
-          const tooltip = (el.getAttribute("data-pr-tooltip") || "").toLowerCase();
-          const title = (el.getAttribute("title") || "").toLowerCase();
-          const id = (el.getAttribute("id") || "").toLowerCase();
+      // Fallback scan: ANY button matching killWords, anywhere in the DOM
+      document.querySelectorAll("button, a").forEach(function(el) {
+        var blob = (
+          (el.getAttribute("aria-label") || "") + " " +
+          (el.getAttribute("title") || "") + " " +
+          (el.getAttribute("data-pr-tooltip") || "") + " " +
+          (el.getAttribute("id") || "") + " " +
+          (el.innerText || el.textContent || "")
+        ).toLowerCase();
+        if (blob.indexOf("manager") !== -1 || blob.indexOf("crystools") !== -1) {
+          el.style.display = "none";
+        }
+      });
+    } catch (e) {}
+  }
 
-          const combinedText = txt + " " + aria + " " + tooltip + " " + title + " " + id;
+  function startObserver() {
+    if (!document.body) { setTimeout(startObserver, 50); return; }
+    tick();
+    new MutationObserver(tick).observe(document.body, {
+      childList: true, subtree: true, characterData: true,
+      attributes: true,
+      attributeFilter: ["data-pr-tooltip", "aria-label", "title", "id", "class"]
+    });
 
-          // Hide menu buttons (but spare anything related to workflow management)
-          if (combinedText.includes("menu")) {{
-              if (!combinedText.includes("workflow")) {{
-                  el.style.display = "none";
-              }}
-          }}
+    // Optional logo
+    var LOGO = "__LOGO_URL__";
+    if (LOGO && LOGO.length > 0) {
+      var logo = document.createElement("img");
+      logo.src = LOGO;
+      logo.style.cssText = "position: fixed; top: 15px; right: 30px; height: 50px; z-index: 10000; pointer-events: none; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.5));";
+      document.body.appendChild(logo);
+    }
+    var BG = "__BG_URL__";
+    if (BG && BG.length > 0) {
+      document.body.classList.add("ofmpath-bg");
+      var app = document.getElementById("app");
+      if (app) app.classList.add("ofmpath-bg");
+    }
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else {
+    startObserver();
+  }
 
-          // Hide blacklisted items (Manager, Properties, Clone, …)
-          if (killWords.some(w => combinedText === w || combinedText.includes(w))) {{
-              if (!combinedText.includes("workflow")) {{
-                  el.style.display = "none";
-              }}
-          }}
-        }});
-    }});
-  }});
-
-  document.addEventListener("DOMContentLoaded", () => {{
-    observer.observe(document.body, {{
-        childList: true,
-        subtree: true,
-        characterData: true,
-        attributes: true,
-        attributeFilter: ["data-pr-tooltip", "aria-label", "title", "id", "class"]
-    }});
-
-    // Optional logo (only injected when OFMPATH_LOGO_URL is set)
-    const LOGO = "{LOGO_URL}";
-    if (LOGO && LOGO.length > 0) {{
-        const logo = document.createElement("img");
-        logo.src = LOGO;
-        logo.style.cssText = "position: fixed; top: 15px; right: 30px; height: 50px; z-index: 10000; pointer-events: none; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.5));";
-        document.body.appendChild(logo);
-    }}
-
-    // Optional background tag (only when OFMPATH_BG_URL is set)
-    const BG = "{BG_URL}";
-    if (BG && BG.length > 0) {{
-        document.body.classList.add("ofmpath-bg");
-        const app = document.getElementById("app");
-        if (app) app.classList.add("ofmpath-bg");
-    }}
-  }});
-
-  // 4. Kill LiteGraph search box from inside the engine
-  const overrideLiteGraph = setInterval(() => {{
-      if (window.LiteGraph && window.LGraphCanvas) {{
-          window.LGraphCanvas.prototype.showSearchBox = function() {{ return false; }};
-          window.LiteGraph.search_hide_on_mouse_leave = true;
-          clearInterval(overrideLiteGraph);
-      }}
-  }}, 500);
+  // 4. Override LiteGraph search box from inside the engine
+  var ofmpathLG = setInterval(function() {
+    if (window.LiteGraph && window.LGraphCanvas) {
+      window.LGraphCanvas.prototype.showSearchBox = function() { return false; };
+      window.LiteGraph.search_hide_on_mouse_leave = true;
+      clearInterval(ofmpathLG);
+    }
+  }, 500);
 </script>
 <!-- /OFMPATH NATIVE UI TWEAKS -->
-'''
+"""
 
-# Stamp marker we look for to skip already-patched files
-MARKER = "OFMPATH NATIVE UI TWEAKS"
 
-stamped = 0
-for p in targets:
+def discover_targets():
+    """Find every plausible frontend index.html on disk, RIGHT NOW."""
+    candidates = []
     try:
-        with open(p, 'r', encoding='utf-8') as f:
+        for sp in site.getsitepackages():
+            candidates.append(os.path.join(sp, "comfyui_frontend_package", "static", "index.html"))
+    except Exception:
+        pass
+    try:
+        candidates.append(os.path.join(site.getusersitepackages(), "comfyui_frontend_package", "static", "index.html"))
+    except Exception:
+        pass
+    # /venv/main is where Vast's vast-pytorch image puts the comfy venv
+    for venv in ("/venv/main", "/opt/venv", "/usr"):
+        for py in ("python3.10", "python3.11", "python3.12", "python3.13"):
+            candidates.append(os.path.join(venv, "lib", py, "site-packages", "comfyui_frontend_package", "static", "index.html"))
+    candidates.append(os.path.join(COMFYUI_DIR, "web", "index.html"))
+
+    seen, targets = set(), []
+    for p in candidates:
+        if p and p not in seen and os.path.isfile(p):
+            seen.add(p); targets.append(p)
+    return targets
+
+
+def patch(path):
+    """Patch a single index.html. Returns True if it was patched, False if already patched or failed."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
             content = f.read()
         if MARKER in content:
-            print("[OFM] \u2014 already patched: " + p)
-            continue
-        # Inject right before </head> — y.sh strategy. Falls back to after <head> then prepend.
-        if "</head>" in content:
-            patched = content.replace("</head>", boot + patch_code + "\n</head>", 1)
-        elif "<head>" in content:
-            patched = content.replace("<head>", "<head>" + boot + patch_code, 1)
-        else:
-            patched = boot + patch_code + content
-        with open(p, 'w', encoding='utf-8') as f:
-            f.write(patched)
-        stamped += 1
-        print("[OFM] \u2713 Lockdown injected: " + p)
-    except Exception as e:
-        print("[OFM] \u26a0 Failed to patch " + p + ": " + str(e))
+            return False  # already patched
 
-print("[OFM] \u2713 UI lockdown applied to " + str(stamped) + " frontend file(s)")
-PYINJECT
+        patch_code = (PATCH_TEMPLATE
+                      .replace("__BG_URL__",   BG_URL)
+                      .replace("__LOGO_URL__", LOGO_URL))
+
+        if "</head>" in content:
+            new_content = content.replace("</head>", BOOT + patch_code + "\n</head>", 1)
+        elif "<head>" in content:
+            new_content = content.replace("<head>", "<head>" + BOOT + patch_code, 1)
+        else:
+            new_content = BOOT + patch_code + content
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        return True
+    except Exception as e:
+        sys.stderr.write("[OFMPATH-LOCKDOWN] failed to patch {}: {}\n".format(path, e))
+        return False
+
+
+def run_once():
+    targets = discover_targets()
+    if not targets:
+        return 0, 0
+    patched = 0
+    for t in targets:
+        if patch(t):
+            print("[OFMPATH-LOCKDOWN] patched: {}".format(t), flush=True)
+            patched += 1
+    return patched, len(targets)
+
+
+def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else "watch"
+    if mode == "once":
+        patched, total = run_once()
+        print("[OFMPATH-LOCKDOWN] one-shot: patched={} of {} files found".format(patched, total))
+        return 0
+    # watch mode (default)
+    print("[OFMPATH-LOCKDOWN] watcher started (interval={}s)".format(INTERVAL), flush=True)
+    while True:
+        try:
+            run_once()
+        except Exception as e:
+            sys.stderr.write("[OFMPATH-LOCKDOWN] tick error: {}\n".format(e))
+        time.sleep(INTERVAL)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+WATCHER_EOF
+    chmod +x /usr/local/bin/ofmpath_lockdown.py
+    echo "[OFM] ✓ Watcher script written to /usr/local/bin/ofmpath_lockdown.py"
+
+    # ── Install as supervisor service ──
+    cat > /etc/supervisor/conf.d/ofmpath_lockdown.conf << SUPV_EOF
+[program:ofmpath_lockdown]
+command=/usr/bin/env python3 /usr/local/bin/ofmpath_lockdown.py watch
+autostart=true
+autorestart=true
+startretries=999
+stdout_logfile=/workspace/ofmpath_lockdown.log
+stderr_logfile=/workspace/ofmpath_lockdown.log
+stdout_logfile_maxbytes=2MB
+environment=OFMPATH_LOGO_URL="${OFMPATH_LOGO_URL}",OFMPATH_BG_URL="${OFMPATH_BG_URL}",COMFYUI_DIR="${COMFYUI_DIR}",OFMPATH_WATCHER_INTERVAL="10"
+SUPV_EOF
+    echo "[OFM] ✓ Supervisor service registered: ofmpath_lockdown"
+
+    # ── Run once synchronously now (will be a no-op if frontend not installed yet — watcher handles that) ──
+    OFMPATH_LOGO_URL="$OFMPATH_LOGO_URL" OFMPATH_BG_URL="$OFMPATH_BG_URL" COMFYUI_DIR="$COMFYUI_DIR" \
+        python3 /usr/local/bin/ofmpath_lockdown.py once || true
+
+    # ── Reload supervisor so the watcher actually starts ──
+    supervisorctl reread >/dev/null 2>&1 || true
+    supervisorctl update  >/dev/null 2>&1 || true
+    supervisorctl start ofmpath_lockdown >/dev/null 2>&1 || true
 
     if [ -f /etc/supervisor/conf.d/comfyui.conf ] && ! grep -q "disable-metadata" /etc/supervisor/conf.d/comfyui.conf; then
         sed -i 's/--listen 0.0.0.0/--listen 0.0.0.0 --disable-metadata/g' /etc/supervisor/conf.d/comfyui.conf
@@ -945,7 +1009,7 @@ PYINJECT
             -o -iname "*.webp" -o -iname "*.mp4" -o -iname "*.webm" \) \
             -exec exiftool -overwrite_original -all= {} \; 2>/dev/null || true
     done
-    echo "[OFM] ✓ UI Lockdown complete"
+    echo "[OFM] ✓ UI Lockdown complete (watcher running in background)"
 }
 
 
