@@ -63,7 +63,7 @@ _decrypt_secure() {
 echo -e "\n\n"
 echo "╔════════════════════════════════════════════════════════════════╗"
 echo "║  OFM PATH 智慧通路  v1 — Inner Installer                       ║"
-echo "║  MOTION CONTROL + TEXT TO IMAGE                                ║"
+echo "║  OFMPATH ANIMATOR + OFMPATH T2I                                ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 
 
@@ -83,7 +83,7 @@ if _fetch_secure "ofmpath_motion.json.enc" /tmp/motion.enc; then
     if _decrypt_secure /tmp/motion.enc /tmp/motion.json; then
         if python3 -c "import json; d=json.load(open('/tmp/motion.json')); assert 'nodes' in d" 2>/dev/null; then
             WORKFLOW_MOTION=/tmp/motion.json
-            echo "[OFM-INNER] ✓ MOTION CONTROL workflow decrypted + validated"
+            echo "[OFM-INNER] ✓ OFMPATH ANIMATOR workflow decrypted + validated"
         else
             echo "[OFM-INNER] ✗ MOTION JSON invalid after decrypt"
         fi
@@ -100,7 +100,7 @@ if _fetch_secure "ofmpath_t2i.json.enc" /tmp/t2i.enc; then
     if _decrypt_secure /tmp/t2i.enc /tmp/t2i.json; then
         if python3 -c "import json; d=json.load(open('/tmp/t2i.json')); assert 'nodes' in d" 2>/dev/null; then
             WORKFLOW_T2I=/tmp/t2i.json
-            echo "[OFM-INNER] ✓ TEXT TO IMAGE workflow decrypted + validated"
+            echo "[OFM-INNER] ✓ OFMPATH T2I workflow decrypted + validated"
         else
             echo "[OFM-INNER] ✗ T2I JSON invalid after decrypt"
         fi
@@ -395,8 +395,8 @@ _deploy_workflow() {
     fi
 }
 
-_deploy_workflow "$WORKFLOW_MOTION" "MOTION CONTROL.json"
-_deploy_workflow "$WORKFLOW_T2I"    "TEXT TO IMAGE.json"
+_deploy_workflow "$WORKFLOW_MOTION" "OFMPATH ANIMATOR.json"
+_deploy_workflow "$WORKFLOW_T2I"    "OFMPATH T2I.json"
 
 rm -f /tmp/motion.json /tmp/t2i.json
 
