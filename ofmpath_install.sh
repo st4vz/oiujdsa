@@ -335,7 +335,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C: Download models (parallel) ━━━"
 echo "[PROGRESS: 55]"
-echo "Found 49 models to verify"
+echo "Found 55 models to verify"
 
 # Shared completion counter
 DL_PROGRESS_FILE="/tmp/ofmpath_dl_progress"
@@ -502,6 +502,20 @@ _dl "$MODELS/loras" "WanPusa.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors" "lora_pusa"
 _dl "$MODELS/loras" "wan.reworked.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors" "lora_wanrw"
+
+# LIPSYNC-SPECIFIC MODELS (6) — required by OFMPATH_LIPSYNC workflow
+_dl "$MODELS/loras" "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" "lora_lightx2v"
+_dl "$MODELS/loras" "Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" \
+    "https://huggingface.co/Kijai/Wan2.1-Fun-Reward-LoRAs-comfy/resolve/main/Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" "lora_funreward"
+_dl "$MODELS/text_encoders" "umt5-xxl-enc-fp8_e4m3fn.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors" "umt5_kj_fp8"
+_dl "$MODELS/vae" "Wan2_1_VAE_bf16.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors" "vae_wan_bf16"
+_dl "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" "wan_i2v_480p"
+_dl "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" "infinitetalk"
 
 # DETECTION (3)
 _dl "$MODELS/detection" "yolov10m.onnx" \
@@ -711,7 +725,7 @@ echo "[OFM-INNER] ✓ Settings written"
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase F: Inventory ━━━"
 _total_files=0
-for _d in diffusion_models text_encoders clip_vision vae controlnet loras checkpoints sams upscale_models detection ultralytics/bbox LLM; do
+for _d in diffusion_models diffusion_models/InfiniteTalk text_encoders clip_vision vae controlnet loras checkpoints sams upscale_models detection ultralytics/bbox LLM; do
     _p="$MODELS/$_d"
     [ -d "$_p" ] || continue
     _n=$(find "$_p" -type f 2>/dev/null | wc -l)
