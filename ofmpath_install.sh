@@ -135,7 +135,7 @@ fi
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE B — INSTALL CUSTOM NODES (27)
+#  PHASE B — INSTALL CUSTOM NODES (29)
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase B: Install custom nodes ━━━"
 echo "[PROGRESS: 42]"
@@ -153,13 +153,13 @@ else
     _install_node() {
         local name="$1" url="$2"
         _NODE_IDX=$((_NODE_IDX + 1))
-        local pct=$(( 42 + (_NODE_IDX * 12 / 27) ))
+        local pct=$(( 42 + (_NODE_IDX * 12 / 29) ))
         echo "[PROGRESS: ${pct}]"
 
         if [ -d "$name" ]; then
-            echo "  [ok] $name (${_NODE_IDX}/27) [already present]"
+            echo "  [ok] $name (${_NODE_IDX}/29) [already present]"
         else
-            echo "  [+] $name (${_NODE_IDX}/27) cloning..."
+            echo "  [+] $name (${_NODE_IDX}/29) cloning..."
             if ! timeout 120 git clone --depth 1 "$url" "$name" 2>&1 | tail -3; then
                 echo "  [!] Clone timeout/failed: $name (continuing)"
                 return 0
@@ -200,6 +200,8 @@ else
     _install_node "ComfyUI-ZMG-Nodes"              "https://github.com/fq393/ComfyUI-ZMG-Nodes"
     _install_node "ComfyUI-WanAnimatePreprocess"   "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
     _install_node "ComfyUI-SAM3"                   "https://github.com/PozzettiAndrea/ComfyUI-SAM3"
+    _install_node "comfy_mtb"                      "https://github.com/melMass/comfy_mtb"
+    _install_node "audio-separation-nodes-comfyui" "https://github.com/christian-byrne/audio-separation-nodes-comfyui"
 
     # KJNodes compat fix
     KJ="$CUSTOM_NODES_DIR/ComfyUI-KJNodes/nodes/nodes.py"
