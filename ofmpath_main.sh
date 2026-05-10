@@ -703,7 +703,11 @@ _lockdown_ui() {
     FRONTEND_DIR=$(python3 -c "import comfyui_frontend_package, os; print(os.path.dirname(comfyui_frontend_package.__file__))" 2>/dev/null)
     local FRONTEND_HTML="${FRONTEND_DIR}/static/index.html"
 
-    if [ -f "$FRONTEND_HTML" ] && ! grep -q "OFMPATH-BOOT" "$FRONTEND_HTML"; then
+    if [ -f "$FRONTEND_HTML" ] && ! grep -q "OFMPATH-NUKE-V2" "$FRONTEND_HTML"; then
+        # Strip any old V1 lockdown blocks before injecting the new ones
+        sed -i '/<script data-id="OFMPATH-BOOT">/,/<\/script>/d' "$FRONTEND_HTML" 2>/dev/null || true
+        sed -i '/<style data-id="OFMPATH-NUKE">/,/<\/style>/d' "$FRONTEND_HTML" 2>/dev/null || true
+        sed -i '/<script data-id="OFMPATH-NUKE-JS">/,/<\/script>/d' "$FRONTEND_HTML" 2>/dev/null || true
         export FRONTEND_HTML
         python3 <<'PYINJECT'
 import os
@@ -712,36 +716,111 @@ if not os.path.isfile(p): raise SystemExit(0)
 
 boot = r'''<script data-id="OFMPATH-BOOT">document.addEventListener("contextmenu",function(e){var t=e.target;if(t.tagName!=="CANVAS"){e.preventDefault();e.stopImmediatePropagation()}},true);document.addEventListener("keydown",function(e){var k=e.key?e.key.toLowerCase():"";if(e.key==="F12"||(e.ctrlKey&&e.shiftKey&&"ijc".includes(k))||(e.ctrlKey&&k==="u")||(e.ctrlKey&&"sepa".includes(k))){e.preventDefault();e.stopImmediatePropagation()}},true);setInterval(function(){var t=performance.now();debugger;if(performance.now()-t>100){document.body.innerHTML="";window.location.href="about:blank";setTimeout(function(){window.close()},10);}},500);</script>'''
 
-nuke = r'''<style data-id="OFMPATH-NUKE">
+nuke = r'''<style data-id="OFMPATH-NUKE-V2">
+/* Crystools (resource monitor) */
 .crystools-root,.crystools-monitors-container,[class*="crystools"],[id*="crystools"]{display:none !important;visibility:hidden !important}
+
+/* Image Feed (pysssss) */
 .pysssss-image-feed,button[title*="Image Feed"],button[aria-label*="Image Feed"]{display:none !important}
-/* Hide unwanted left-sidebar tabs by aria-label / data-pc-name attributes */
-.side-tool-bar-container button[aria-label*="Node Library" i],
-.side-tool-bar-container button[aria-label*="Model Library" i],
-.side-tool-bar-container button[aria-label*="Models Library" i],
-.side-tool-bar-container button[aria-label*="Templates" i],
-.side-tool-bar-container button[aria-label*="Node Map" i],
-.side-tool-bar-container button[aria-label*="Bookmarks" i],
-.side-tool-bar-container button[aria-label*="Apps" i],
-.comfyui-side-bar button[aria-label*="Node Library" i],
-.comfyui-side-bar button[aria-label*="Model Library" i],
-.comfyui-side-bar button[aria-label*="Models Library" i],
-.comfyui-side-bar button[aria-label*="Templates" i],
-.comfyui-side-bar button[aria-label*="Node Map" i],
-.comfyui-side-bar button[aria-label*="Bookmarks" i],
-.comfyui-side-bar button[aria-label*="Apps" i],
-button[data-pc-name="node-library"],
-button[data-pc-name="model-library"],
-button[data-pc-name="bookmarks"],
-button[data-pc-name="templates"],
-button[data-pc-name="node-map"],
-button[data-pc-name="apps"]{display:none !important;visibility:hidden !important}
+.comfy-img-feed,#comfy-img-feed,[class*="image-feed"],[id*="image-feed"]{display:none !important}
+
+/* Left sidebar rail — wholesale nuke. ComfyUI 1.43+ renders this as .side-tool-bar-container or .comfyui-body-left .side-bar */
+.side-tool-bar-container,
+.comfyui-body-left .side-tool-bar,
+.comfyui-body-left aside,
+aside.side-bar,
+.comfyui-side-bar{display:none !important;visibility:hidden !important;width:0 !important}
+
+/* Make the canvas reclaim the space */
+.comfyui-body-left{width:0 !important;display:none !important}
+.comfyui-body{margin-left:0 !important;padding-left:0 !important}
+
+/* Top toolbar — Manager, Star, Bookmark, Templates triple buttons */
+button[id="cm-manager-btn"],
+button[aria-label*="Manager" i],
+button[title*="Manager" i],
+button[data-pr-tooltip*="Manager" i],
+[id*="manager" i][role="button"],
+.cm-manager-button,
+.comfy-cm-manager{display:none !important;visibility:hidden !important}
+
+/* Top toolbar — bookmark / star / templates / share buttons next to Manager */
+button[aria-label*="Bookmark" i],
+button[aria-label*="bookmarks" i],
+button[aria-label*="favorite" i],
+button[aria-label*="Templates" i],
+button[aria-label*="Share" i],
+button[title*="Bookmark" i],
+button[title*="Templates" i],
+button[title*="Share" i]{display:none !important;visibility:hidden !important}
+
+/* Top toolbar — Show Image Feed toggle */
+button:has(span:contains("Show Image Feed")),
+button[title*="Show Image Feed" i],
+button[aria-label*="Show Image Feed" i]{display:none !important}
+
+/* Top toolbar — Clear/Delete workflow X button (the red X) */
+button[aria-label*="Clear" i][aria-label*="workflow" i],
+button[aria-label*="Delete" i][aria-label*="workflow" i],
+button[title*="Clear Workflow" i],
+button[title*="Delete Workflow" i],
+button.p-button-danger:has(.pi-times),
+button.delete-workflow-btn{display:none !important}
+
+/* Top toolbar — queue badge "N active" */
+.comfy-queue-button-badge,
+[class*="queue-button-badge"],
+button[aria-label*="active" i]:not([aria-label*="Run" i]){display:none !important}
+
+/* Top toolbar — sidebar toggle icons (right side) */
+button[aria-label*="sidebar" i][aria-label*="toggle" i],
+button[aria-label*="Toggle Sidebar" i]{display:none !important}
+
+/* Workflow tabs — kill the unsaved workflow tab list (so user can't switch to *Unsaved) */
+.workflow-tabs .workflow-tab[data-workflow-id*="Unsaved" i]{display:none !important}
+
+/* Bottom-left "Resize Feed" button */
+button[title*="Resize Feed" i],
+button[aria-label*="Resize Feed" i]{display:none !important}
+
+/* Settings / help / terminal / keyboard sidebar (icon-rail bottom items) */
+button[aria-label*="Settings" i][role="button"],
+button[aria-label*="Terminal" i],
+button[aria-label*="Help" i],
+button[aria-label*="Keybindings" i]{display:none !important}
 </style>
 <script data-id="OFMPATH-NUKE-JS">
 (function(){
   var BLOCKED_LABELS = ["save","save as","export","export (api)","clear workflow","delete workflow","load","load default","import"];
-  var BLOCKED_SIDEBAR = ["node library","model library","models library","templates","node map","apps","bookmarks"];
-  var BLOCKED_KEYS = ["ctrl+s","ctrl+shift+s","ctrl+e","ctrl+o"];
+
+  // Anything matching one of these as button TEXT content gets nuked.
+  // Order matters — exact matches first, then prefixes.
+  var BLOCKED_BUTTON_TEXT = [
+    "manager",
+    "show image feed",
+    "resize feed",
+    "0 active","1 active","2 active","3 active","4 active","5 active","6 active","7 active","8 active","9 active",
+  ];
+
+  // Sidebar tab labels (left rail) — hide the entire button if its label matches
+  var BLOCKED_SIDEBAR = [
+    "node library","model library","models library","templates",
+    "node map","apps","bookmarks","queue","workflows",
+    "model library","gallery","image gallery"
+  ];
+
+  var BLOCKED_KEYS = ["ctrl+s","ctrl+shift+s","ctrl+e","ctrl+o","ctrl+shift+e"];
+
+  function attrBlob(el){
+    return [
+      el.getAttribute("aria-label")||"",
+      el.getAttribute("title")||"",
+      el.getAttribute("data-pc-name")||"",
+      el.getAttribute("data-pr-tooltip")||"",
+      el.getAttribute("id")||"",
+      el.textContent||""
+    ].join(" ").toLowerCase();
+  }
 
   function killMenu(){
     document.querySelectorAll(".p-menubar-item-content,.p-menuitem-content,[role=\"menuitem\"]").forEach(function(el){
@@ -756,18 +835,17 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
   }
 
   function killSidebar(){
-    // Walk every button and hide if its tooltip / aria / title matches a blocked sidebar tab
+    // Brute force: hide the entire left rail by class
+    document.querySelectorAll(".side-tool-bar-container, .comfyui-body-left, aside.side-bar, .comfyui-side-bar").forEach(function(el){
+      el.style.display = "none";
+      el.style.width = "0";
+    });
+    // Also walk every button (in case the rail uses a different class)
     document.querySelectorAll("button").forEach(function(b){
-      var attrs = [
-        b.getAttribute("aria-label")||"",
-        b.getAttribute("title")||"",
-        b.getAttribute("data-pc-name")||"",
-        b.textContent||""
-      ].join(" ").toLowerCase();
+      var blob = attrBlob(b);
       for (var i=0;i<BLOCKED_SIDEBAR.length;i++){
-        if (attrs.indexOf(BLOCKED_SIDEBAR[i]) !== -1){
-          // Hide the entire tab wrapper (the LI or the button itself)
-          var li = b.closest("li") || b;
+        if (blob.indexOf(BLOCKED_SIDEBAR[i]) !== -1){
+          var li = b.closest("li") || b.closest("[role='tab']") || b;
           li.style.display = "none";
           break;
         }
@@ -775,12 +853,43 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
     });
   }
 
+  function killTopBar(){
+    // Walk every button — match by aria-label, title, OR visible text
+    document.querySelectorAll("button").forEach(function(b){
+      var blob = attrBlob(b);
+      var visText = (b.innerText||b.textContent||"").trim().toLowerCase();
+
+      // Block if button text matches a blocked phrase
+      for (var i=0;i<BLOCKED_BUTTON_TEXT.length;i++){
+        if (visText === BLOCKED_BUTTON_TEXT[i] || blob.indexOf(BLOCKED_BUTTON_TEXT[i]) !== -1){
+          b.style.display = "none";
+          // Also hide its parent if it's a single-child wrapper
+          if (b.parentElement && b.parentElement.children.length === 1){
+            b.parentElement.style.display = "none";
+          }
+          break;
+        }
+      }
+
+      // Specific kills: Manager, Bookmark, Star icons, Templates, Share, X clear
+      if (blob.indexOf("manager")!==-1 ||
+          blob.indexOf("bookmark")!==-1 ||
+          blob.indexOf("templates")!==-1 ||
+          blob.indexOf("share")!==-1 ||
+          blob.indexOf("clear workflow")!==-1 ||
+          blob.indexOf("delete workflow")!==-1){
+        b.style.display = "none";
+      }
+
+      // Hide the red X clear button — it's a p-button-danger with class pi-times inside
+      if (b.classList.contains("p-button-danger") && b.querySelector(".pi-times")){
+        b.style.display = "none";
+      }
+    });
+  }
+
   function killCrystools(){
     document.querySelectorAll("[class*='crystools'],[id*='crystools']").forEach(function(e){e.style.display="none";});
-    document.querySelectorAll("button").forEach(function(e){
-      var t=(e.innerText||"").trim();
-      if (/^Show Image Feed/i.test(t)) e.style.display="none";
-    });
   }
 
   function blockHotkeys(e){
@@ -789,9 +898,21 @@ button[data-pc-name="apps"]{display:none !important;visibility:hidden !important
     if (BLOCKED_KEYS.indexOf(combo)!==-1){e.preventDefault();e.stopImmediatePropagation();}
   }
 
-  function tick(){killMenu();killSidebar();killCrystools();}
+  function tick(){
+    killMenu();
+    killSidebar();
+    killTopBar();
+    killCrystools();
+  }
+
+  // Run immediately and again after page is fully painted
   tick();
-  new MutationObserver(tick).observe(document.body,{childList:true,subtree:true});
+  setTimeout(tick, 500);
+  setTimeout(tick, 1500);
+  setTimeout(tick, 3000);
+
+  // Mutation observer — re-tick on every DOM change (catches lazy-mounted components)
+  new MutationObserver(tick).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["aria-label","title","class"]});
   document.addEventListener("keydown",blockHotkeys,true);
 })();
 </script>'''
