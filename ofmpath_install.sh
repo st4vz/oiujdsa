@@ -63,7 +63,7 @@ _decrypt_secure() {
 echo -e "\n\n"
 echo "╔════════════════════════════════════════════════════════════════╗"
 echo "║  OFM PATH 智慧通路  v1 — Inner Installer                       ║"
-echo "║  IMG GEN + LIPSYNC + MOTION                                    ║"
+echo "║  OFMPATH ANIMATOR + OFMPATH T2I                                ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 
 
@@ -75,53 +75,15 @@ echo "[PROGRESS: 35]"
 
 mkdir -p "$WORKFLOWS_DIR" "$COMFYUI_DIR/input"
 
-WORKFLOW_IMG_GEN=""
-WORKFLOW_LIPSYNC=""
 WORKFLOW_MOTION=""
+WORKFLOW_T2I=""
 
-# ── IMG_GEN ──
-if _fetch_secure "OFMPATH_IMG_GEN.json.enc" /tmp/img_gen.enc; then
-    echo "[OFM-INNER] Fetched IMG_GEN ($(stat -c%s /tmp/img_gen.enc) bytes)"
-    if _decrypt_secure /tmp/img_gen.enc /tmp/img_gen.json; then
-        if python3 -c "import json; d=json.load(open('/tmp/img_gen.json')); assert 'nodes' in d" 2>/dev/null; then
-            WORKFLOW_IMG_GEN=/tmp/img_gen.json
-            echo "[OFM-INNER] ✓ OFMPATH_IMG_GEN workflow decrypted + validated"
-        else
-            echo "[OFM-INNER] ✗ IMG_GEN JSON invalid after decrypt"
-        fi
-    else
-        echo "[OFM-INNER] ✗ IMG_GEN decrypt failed (wrong key?)"
-    fi
-    rm -f /tmp/img_gen.enc
-else
-    echo "[OFM-INNER] ✗ IMG_GEN fetch failed"
-fi
-
-# ── LIPSYNC ──
-if _fetch_secure "OFMPATH_LIPSYNC.json.enc" /tmp/lipsync.enc; then
-    echo "[OFM-INNER] Fetched LIPSYNC ($(stat -c%s /tmp/lipsync.enc) bytes)"
-    if _decrypt_secure /tmp/lipsync.enc /tmp/lipsync.json; then
-        if python3 -c "import json; d=json.load(open('/tmp/lipsync.json')); assert 'nodes' in d" 2>/dev/null; then
-            WORKFLOW_LIPSYNC=/tmp/lipsync.json
-            echo "[OFM-INNER] ✓ OFMPATH_LIPSYNC workflow decrypted + validated"
-        else
-            echo "[OFM-INNER] ✗ LIPSYNC JSON invalid after decrypt"
-        fi
-    else
-        echo "[OFM-INNER] ✗ LIPSYNC decrypt failed (wrong key?)"
-    fi
-    rm -f /tmp/lipsync.enc
-else
-    echo "[OFM-INNER] ✗ LIPSYNC fetch failed"
-fi
-
-# ── MOTION ──
-if _fetch_secure "OFMPATH_MOTION.json.enc" /tmp/motion.enc; then
-    echo "[OFM-INNER] Fetched MOTION ($(stat -c%s /tmp/motion.enc) bytes)"
+if _fetch_secure "ofmpath_motion.json.enc" /tmp/motion.enc; then
+    echo "[OFM-INNER] Fetched motion ($(stat -c%s /tmp/motion.enc) bytes)"
     if _decrypt_secure /tmp/motion.enc /tmp/motion.json; then
         if python3 -c "import json; d=json.load(open('/tmp/motion.json')); assert 'nodes' in d" 2>/dev/null; then
             WORKFLOW_MOTION=/tmp/motion.json
-            echo "[OFM-INNER] ✓ OFMPATH_MOTION workflow decrypted + validated"
+            echo "[OFM-INNER] ✓ OFMPATH ANIMATOR workflow decrypted + validated"
         else
             echo "[OFM-INNER] ✗ MOTION JSON invalid after decrypt"
         fi
@@ -133,9 +95,26 @@ else
     echo "[OFM-INNER] ✗ MOTION fetch failed"
 fi
 
+if _fetch_secure "ofmpath_t2i.json.enc" /tmp/t2i.enc; then
+    echo "[OFM-INNER] Fetched t2i ($(stat -c%s /tmp/t2i.enc) bytes)"
+    if _decrypt_secure /tmp/t2i.enc /tmp/t2i.json; then
+        if python3 -c "import json; d=json.load(open('/tmp/t2i.json')); assert 'nodes' in d" 2>/dev/null; then
+            WORKFLOW_T2I=/tmp/t2i.json
+            echo "[OFM-INNER] ✓ OFMPATH T2I workflow decrypted + validated"
+        else
+            echo "[OFM-INNER] ✗ T2I JSON invalid after decrypt"
+        fi
+    else
+        echo "[OFM-INNER] ✗ T2I decrypt failed"
+    fi
+    rm -f /tmp/t2i.enc
+else
+    echo "[OFM-INNER] ✗ T2I fetch failed"
+fi
+
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE B — INSTALL CUSTOM NODES (29)
+#  PHASE B — INSTALL CUSTOM NODES (28)
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase B: Install custom nodes ━━━"
 echo "[PROGRESS: 42]"
@@ -153,13 +132,13 @@ else
     _install_node() {
         local name="$1" url="$2"
         _NODE_IDX=$((_NODE_IDX + 1))
-        local pct=$(( 42 + (_NODE_IDX * 12 / 29) ))
+        local pct=$(( 42 + (_NODE_IDX * 12 / 27) ))
         echo "[PROGRESS: ${pct}]"
 
         if [ -d "$name" ]; then
-            echo "  [ok] $name (${_NODE_IDX}/29) [already present]"
+            echo "  [ok] $name (${_NODE_IDX}/27) [already present]"
         else
-            echo "  [+] $name (${_NODE_IDX}/29) cloning..."
+            echo "  [+] $name (${_NODE_IDX}/27) cloning..."
             if ! timeout 120 git clone --depth 1 "$url" "$name" 2>&1 | tail -3; then
                 echo "  [!] Clone timeout/failed: $name (continuing)"
                 return 0
@@ -200,8 +179,6 @@ else
     _install_node "ComfyUI-ZMG-Nodes"              "https://github.com/fq393/ComfyUI-ZMG-Nodes"
     _install_node "ComfyUI-WanAnimatePreprocess"   "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
     _install_node "ComfyUI-SAM3"                   "https://github.com/PozzettiAndrea/ComfyUI-SAM3"
-    _install_node "comfy_mtb"                      "https://github.com/melMass/comfy_mtb"
-    _install_node "audio-separation-nodes-comfyui" "https://github.com/christian-byrne/audio-separation-nodes-comfyui"
 
     # KJNodes compat fix
     KJ="$CUSTOM_NODES_DIR/ComfyUI-KJNodes/nodes/nodes.py"
@@ -216,14 +193,14 @@ fi
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE C — DOWNLOAD MODELS (55)
+#  PHASE C — DOWNLOAD MODELS (49)
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C: Download models ━━━"
 echo "[PROGRESS: 55]"
-echo "Found 55 models to verify"
+echo "Found 49 models to verify"
 
 _MODEL_IDX=0
-_MODEL_TOTAL=55
+_MODEL_TOTAL=49
 
 _dl() {
     local dir="$1" file="$2" url="$3" label="${4:-asset}"
@@ -330,20 +307,6 @@ _dl "$MODELS/loras" "WanPusa.safetensors" \
 _dl "$MODELS/loras" "wan.reworked.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors" "lora_wanrw"
 
-# LIPSYNC-SPECIFIC MODELS (6) — required by OFMPATH_LIPSYNC workflow
-_dl "$MODELS/loras" "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" "lora_lightx2v"
-_dl "$MODELS/loras" "Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" \
-    "https://huggingface.co/Kijai/Wan2.1-Fun-Reward-LoRAs-comfy/resolve/main/Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" "lora_funreward"
-_dl "$MODELS/text_encoders" "umt5-xxl-enc-fp8_e4m3fn.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors" "umt5_kj_fp8"
-_dl "$MODELS/vae" "Wan2_1_VAE_bf16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors" "vae_wan_bf16"
-_dl "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" "wan_i2v_480p"
-_dl "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" "infinitetalk"
-
 # DETECTION (3)
 _dl "$MODELS/detection" "yolov10m.onnx" \
     "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" "det_yolo"
@@ -432,11 +395,10 @@ _deploy_workflow() {
     fi
 }
 
-_deploy_workflow "$WORKFLOW_IMG_GEN"  "OFMPATH_IMG_GEN.json"
-_deploy_workflow "$WORKFLOW_LIPSYNC"  "OFMPATH_LIPSYNC.json"
-_deploy_workflow "$WORKFLOW_MOTION"   "OFMPATH_MOTION.json"
+_deploy_workflow "$WORKFLOW_MOTION" "OFMPATH ANIMATOR.json"
+_deploy_workflow "$WORKFLOW_T2I"    "OFMPATH T2I.json"
 
-rm -f /tmp/img_gen.json /tmp/lipsync.json /tmp/motion.json
+rm -f /tmp/motion.json /tmp/t2i.json
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -478,7 +440,7 @@ echo "[OFM-INNER] ✓ Settings written"
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase F: Inventory ━━━"
 _total_files=0
-for _d in diffusion_models diffusion_models/InfiniteTalk text_encoders clip_vision vae controlnet loras checkpoints sams upscale_models detection ultralytics/bbox LLM; do
+for _d in diffusion_models text_encoders clip_vision vae controlnet loras checkpoints sams upscale_models detection ultralytics/bbox LLM; do
     _p="$MODELS/$_d"
     [ -d "$_p" ] || continue
     _n=$(find "$_p" -type f 2>/dev/null | wc -l)
