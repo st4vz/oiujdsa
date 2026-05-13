@@ -193,39 +193,37 @@ fi
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE C — DOWNLOAD MODELS (49)
+#  PHASE C — DOWNLOAD MODELS (51 total, was 49)
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C: Download models ━━━"
 echo "[PROGRESS: 55]"
-echo "Found 49 models to verify"
-
+echo "Found 51 models to verify"
+ 
 _MODEL_IDX=0
-_MODEL_TOTAL=49
-
+_MODEL_TOTAL=51  # Increased from 49 to 51 (added 2 SeedVR2 models)
+ 
 _dl() {
     local dir="$1" file="$2" url="$3" label="${4:-asset}"
     _MODEL_IDX=$((_MODEL_IDX + 1))
     local pct=$(( 55 + (_MODEL_IDX * 35 / _MODEL_TOTAL) ))
     mkdir -p "$dir"
     echo "[STARTING] '${label}'"
-    # Better cache check: must exist AND be bigger than 1KB (most config files are ≥1KB, real weights are MBs)
     if [ -f "$dir/$file" ] && [ "$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)" -gt 1024 ]; then
         echo "  [ok] cached ($(stat -c%s "$dir/$file") bytes)"
         echo "[SUCCESS]"
         echo "[PROGRESS: ${pct}]"
         return
     fi
-    # Tiny files (json, txt) don't need the 1KB check — accept any non-empty
     if [ -f "$dir/$file" ] && [ -s "$dir/$file" ] && [[ "$file" =~ \.(json|txt|jinja)$ ]]; then
         echo "  [ok] cached (small file)"
         echo "[SUCCESS]"
         echo "[PROGRESS: ${pct}]"
         return
     fi
-
+ 
     local hdr=""
     [[ "$url" =~ huggingface\.co ]] && hdr="Authorization: Bearer $HF_TOKEN"
-
+ 
     if command -v aria2c >/dev/null 2>&1; then
         if [ -n "$hdr" ]; then
             timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M --header="$hdr" \
@@ -243,7 +241,7 @@ _dl() {
             timeout 1800 curl -fsSL --retry 2 -o "$dir/$file" "$url" 2>/dev/null
         fi
     fi
-
+ 
     if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
         echo "  [dl] $(stat -c%s "$dir/$file") bytes"
         echo "[SUCCESS]"
@@ -252,7 +250,7 @@ _dl() {
     fi
     echo "[PROGRESS: ${pct}]"
 }
-
+ 
 # DIFFUSION (3)
 _dl "$MODELS/diffusion_models" "z_image_turbo_bf16.safetensors" \
     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" "z_image_bf16"
@@ -260,7 +258,7 @@ _dl "$MODELS/diffusion_models" "z-image-turbo-fp8-e4m3fn.safetensors" \
     "https://huggingface.co/T5B/Z-Image-Turbo-FP8/resolve/main/z-image-turbo-fp8-e4m3fn.safetensors" "z_image_fp8"
 _dl "$MODELS/diffusion_models" "WanModel.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanModel.safetensors" "wan_diffusion"
-
+ 
 # TEXT ENCODERS (3)
 _dl "$MODELS/text_encoders" "qwen_3_4b.safetensors" \
     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "qwen3_4b"
@@ -268,29 +266,29 @@ _dl "$MODELS/text_encoders" "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" \
     "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/refs%2Fpr%2F5/models/clip/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" "umt5xxl"
 _dl "$MODELS/text_encoders" "text_enc.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors" "text_enc"
-
+ 
 # CLIP VISION (2)
 _dl "$MODELS/clip_vision" "klip_vision.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors" "clip_vision_k"
 _dl "$MODELS/clip_vision" "clip_vision_h.safetensors" \
     "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors" "clip_vision_h"
-
+ 
 # VAE (2)
 _dl "$MODELS/vae" "ae.safetensors" \
     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" "vae_ae"
 _dl "$MODELS/vae" "vae.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors" "vae_wan"
-
+ 
 # CONTROLNET (2)
 _dl "$MODELS/controlnet" "Wan21_Uni3C_controlnet_fp16.safetensors" \
     "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors" "ctrl_wan"
 _dl "$MODELS/controlnet" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
     "https://huggingface.co/arhiteector/zimage/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors" "ctrl_zimg"
-
+ 
 # CHECKPOINTS (1)
 _dl "$MODELS/checkpoints" "detect.safetensors" \
     "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" "ckpt_detect"
-
+ 
 # LORAS (7)
 _dl "$MODELS/loras" "real.safetensors" \
     "https://huggingface.co/gazsuv/sudoku/resolve/main/real.safetensors" "lora_real"
@@ -306,7 +304,7 @@ _dl "$MODELS/loras" "WanPusa.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors" "lora_pusa"
 _dl "$MODELS/loras" "wan.reworked.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors" "lora_wanrw"
-
+ 
 # DETECTION (3)
 _dl "$MODELS/detection" "yolov10m.onnx" \
     "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" "det_yolo"
@@ -314,15 +312,15 @@ _dl "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
     "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" "det_vitpose_data"
 _dl "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
     "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx" "det_vitpose_model"
-
+ 
 # SAM (1)
 _dl "$MODELS/sams" "sam_vit_b_01ec64.pth" \
     "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/sams/sam_vit_b_01ec64.pth" "sam_vit_b"
-
+ 
 # UPSCALER (1)
 _dl "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/4xUltrasharp_4xUltrasharpV10.pt" "upscaler"
-
+ 
 # ULTRALYTICS BBOX (11)
 _dl "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/face_yolov8s.pt" "bbox_face"
@@ -346,7 +344,7 @@ _dl "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/hand_yolov8s.pt" "bbox_hand"
 _dl "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
     "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt" "bbox_foot"
-
+ 
 # QWEN3 VL (13)
 _QWEN_DIR="$MODELS/LLM/Qwen3-VL-4B-Instruct-heretic-7refusal"
 _QWEN_BASE="https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main"
@@ -363,8 +361,45 @@ _dl "$_QWEN_DIR" "tokenizer_config.json"        "$_QWEN_BASE/tokenizer_config.js
 _dl "$_QWEN_DIR" "vocab.json"                   "$_QWEN_BASE/vocab.json"                   "qwen_vocab"
 _dl "$_QWEN_DIR" "model-00001-of-00002.safetensors" "$_QWEN_BASE/model-00001-of-00002.safetensors" "qwen_shard1"
 _dl "$_QWEN_DIR" "model-00002-of-00002.safetensors" "$_QWEN_BASE/model-00002-of-00002.safetensors" "qwen_shard2"
-
+ 
+# SEEDVR2 (2) - NEW: Required by SeedVR2 video upscaler node
+_dl "$MODELS/SEEDVR2" "seedvr2_ema_7b_sharp_fp16.safetensors" \
+    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" "seedvr2_dit"
+_dl "$MODELS/SEEDVR2" "ema_vae_fp16.safetensors" \
+    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors" "seedvr2_vae"
+ 
 echo "[OFM-INNER] ✓ Phase C model downloads complete"
+ 
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE C.5 — MODEL PATH FIXES (NEW PHASE)
+# ═══════════════════════════════════════════════════════════════════════════
+echo -e "\n━━━ Phase C.5: Model path fixes ━━━"
+ 
+# Fix 1: Copy 4xUltrasharp to checkpoints (some workflows expect it there instead of upscale_models)
+mkdir -p "$MODELS/checkpoints"
+if [ -f "$MODELS/upscale_models/4xUltrasharp_4xUltrasharpV10.pt" ]; then
+    cp "$MODELS/upscale_models/4xUltrasharp_4xUltrasharpV10.pt" "$MODELS/checkpoints/"
+    echo "[OFM-INNER] ✓ Copied 4xUltrasharp to checkpoints"
+fi
+ 
+# Fix 2: Copy Eyeful_v2 to checkpoints/bbox (workflow expects checkpoints/bbox NOT ultralytics/bbox)
+mkdir -p "$MODELS/checkpoints/bbox"
+if [ -f "$MODELS/ultralytics/bbox/Eyeful_v2-Paired.pt" ]; then
+    cp "$MODELS/ultralytics/bbox/Eyeful_v2-Paired.pt" "$MODELS/checkpoints/bbox/"
+    echo "[OFM-INNER] ✓ Copied Eyeful_v2 to checkpoints/bbox"
+fi
+ 
+# Fix 3: Copy face/hand detectors to checkpoints/bbox (some workflows use different paths)
+if [ -f "$MODELS/ultralytics/bbox/face_yolov8s.pt" ]; then
+    cp "$MODELS/ultralytics/bbox/face_yolov8s.pt" "$MODELS/checkpoints/bbox/" 2>/dev/null || true
+    echo "[OFM-INNER] ✓ Copied face_yolov8s to checkpoints/bbox"
+fi
+if [ -f "$MODELS/ultralytics/bbox/hand_yolov8s.pt" ]; then
+    cp "$MODELS/ultralytics/bbox/hand_yolov8s.pt" "$MODELS/checkpoints/bbox/" 2>/dev/null || true
+    echo "[OFM-INNER] ✓ Copied hand_yolov8s to checkpoints/bbox"
+fi
+echo "[OFM-INNER] ✓ Path fixes applied"
+ 
 
 
 # ═══════════════════════════════════════════════════════════════════════════
