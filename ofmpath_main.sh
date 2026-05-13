@@ -192,7 +192,7 @@ _start_preloader() {
       </div>
       <div class="stat">
         <div class="stat-label">Models</div>
-        <div class="stat-value"><span id="models-done">0</span><span class="sub">/<span id="models-total">49</span></span></div>
+        <div class="stat-value"><span id="models-done">0</span><span class="sub">/<span id="models-total">51</span></span></div>
         <div class="stat-hint">synced</div>
       </div>
       <div class="stat">
@@ -250,8 +250,8 @@ _start_preloader() {
     document.getElementById("elapsed").textContent = fmtDur(Date.now() - startTs);
   }, 1000);
 
-  // ── Weight blocks grid (49 cells) ──
-  const TOTAL_MODELS = 49;
+  // ── Weight blocks grid (51 cells) ──
+  const TOTAL_MODELS = 51;
   const blocksWrap = document.getElementById("blocks");
   for (let i = 0; i < TOTAL_MODELS; i++) {
     const c = document.createElement("div");
