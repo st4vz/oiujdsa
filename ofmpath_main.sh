@@ -45,7 +45,7 @@ _start_preloader() {
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { height:100%; overflow:hidden; }   /* never scroll the page itself */
+  html,body { height:100%; overflow:hidden; }
   body { background:#0a0a0a; color:#f0e6cf; font-family:'JetBrains Mono','Courier New',monospace;
          display:flex; justify-content:center; align-items:center; height:100vh;
          position:relative; padding:clamp(8px, 2vh, 32px) 16px; }
@@ -53,8 +53,6 @@ _start_preloader() {
                  background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0,rgba(0,0,0,.35) 1px,transparent 1px,transparent 3px); }
   body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:1;
                 background:radial-gradient(ellipse at 50% 50%, rgba(240,230,207,0.04) 0%, transparent 65%); }
-
-  /* Wrap fits within viewport — internal scroll only as last-resort fallback */
   .wrap { position:relative; z-index:10; max-width:780px; width:100%;
           max-height:calc(100vh - clamp(16px, 4vh, 64px));
           overflow-y:auto;
@@ -64,10 +62,8 @@ _start_preloader() {
           box-shadow:0 0 60px rgba(240,230,207,0.05), inset 0 0 0 1px rgba(240,230,207,0.06);
           animation:slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
           display:flex; flex-direction:column; }
-  /* Hide scrollbar in webkit while still allowing scroll if needed */
   .wrap::-webkit-scrollbar { width:4px; }
   .wrap::-webkit-scrollbar-thumb { background:rgba(240,230,207,0.15); border-radius:2px; }
-
   @keyframes slideUp { from { opacity:0; transform:translateY(16px);} to { opacity:1; transform:translateY(0);} }
   .brand { text-align:center; font-size:12px; letter-spacing:5px; color:#f0e6cf; opacity:.6; margin-bottom:clamp(6px, 1vh, 14px); }
   pre.ascii { font-size:clamp(8px, 1.4vh, 14px); line-height:1.25; color:#faf1d6;
@@ -126,20 +122,15 @@ _start_preloader() {
          cursor:pointer; letter-spacing:2px; font-family:'JetBrains Mono',monospace; text-transform:uppercase;
          box-shadow:0 0 20px rgba(240,230,207,0.3); transition:all .15s; }
   .btn:hover { transform:translateY(-1px); box-shadow:0 0 30px rgba(240,230,207,0.5); }
-
-  /* Narrow screens — stack stats, allow ladder wrap */
   @media (max-width: 540px) {
     .stats { grid-template-columns:repeat(2,1fr); }
     .ladder { flex-wrap:wrap; }
     .rung { min-width:45px; }
   }
-
-  /* Short viewports (laptop/embedded screens) — drop the ASCII art entirely */
   @media (max-height: 720px) {
     pre.ascii { display:none; }
     .version { margin-bottom:14px; }
   }
-  /* Very short viewports — also drop the brand line and shrink the panel */
   @media (max-height: 560px) {
     .brand, .footer { display:none; }
     .stat-value { font-size:18px; }
@@ -151,10 +142,9 @@ _start_preloader() {
     .stats { margin-bottom:10px; }
     .bar-label { margin-bottom:10px; }
   }
-  /* Crunch mode — under 440px tall (rare, but possible on iframes/popups) */
   @media (max-height: 440px) {
-    .panel, .ladder { display:none; }   /* hide phase ladder + nodes panel */
-    .stats { display:none; }            /* hide stat tiles */
+    .panel, .ladder { display:none; }
+    .stats { display:none; }
     .version { display:none; }
   }
 </style>
@@ -192,7 +182,7 @@ _start_preloader() {
       </div>
       <div class="stat">
         <div class="stat-label">Models</div>
-        <div class="stat-value"><span id="models-done">0</span><span class="sub">/<span id="models-total">51</span></span></div>
+        <div class="stat-value"><span id="models-done">0</span><span class="sub">/<span id="models-total">57</span></span></div>
         <div class="stat-hint">synced</div>
       </div>
       <div class="stat">
@@ -232,14 +222,12 @@ _start_preloader() {
 <script>
 (function () {
   "use strict";
-  // ── Anti-inspection (soft) ──
   document.addEventListener("contextmenu", e => e.preventDefault(), true);
   document.addEventListener("keydown", e => {
     const k = e.key ? e.key.toLowerCase() : "";
     if (e.key === "F12" || (e.ctrlKey && e.shiftKey && "ijc".includes(k)) || (e.ctrlKey && k === "u")) e.preventDefault();
   }, true);
 
-  // ── Elapsed timer ──
   const startTs = Date.now();
   function fmtDur(ms) {
     const s = Math.max(0, Math.floor(ms / 1000));
@@ -250,8 +238,7 @@ _start_preloader() {
     document.getElementById("elapsed").textContent = fmtDur(Date.now() - startTs);
   }, 1000);
 
-  // ── Weight blocks grid (51 cells) ──
-  const TOTAL_MODELS = 51;
+  const TOTAL_MODELS = 57;
   const blocksWrap = document.getElementById("blocks");
   for (let i = 0; i < TOTAL_MODELS; i++) {
     const c = document.createElement("div");
@@ -259,7 +246,6 @@ _start_preloader() {
     blocksWrap.appendChild(c);
   }
 
-  // ── Phase tracker ──
   const PHASE_ORDER = ["INIT","B","C","D"];
   function mapPhase(internal) {
     if (internal === "A") return "INIT";
@@ -281,7 +267,6 @@ _start_preloader() {
     });
   }
 
-  // ── Main state parsed from install.log ──
   const state = {
     nodesDone: 0, modelsDone: 0, modelsFailed: 0,
     pct: 0, phase: null,
@@ -298,7 +283,6 @@ _start_preloader() {
     return String(d.getHours()).padStart(2,'0') + ":" + String(d.getMinutes()).padStart(2,'0');
   }
 
-  // ── Handoff detection ──
   setInterval(async () => {
     try {
       const r = await fetch("ready?t=" + Date.now());
@@ -329,25 +313,22 @@ _start_preloader() {
     setTimeout(() => { document.getElementById("refresh-prompt").style.display = "block"; }, 20000);
   }
 
-  // ── Main log polling ──
   async function poll() {
     try {
       const res = await fetch("install.log?t=" + Date.now());
       if (!res.ok) return;
       const text = await res.text();
-      if (text.length === state.lastLogSize) return; // unchanged
+      if (text.length === state.lastLogSize) return;
       state.lastLogSize = text.length;
 
       const lines = text.split("\n");
 
-      // ── Phase detection (from most recent phase marker) ──
       for (let i = lines.length - 1; i >= 0; i--) {
         const m = lines[i].match(/Phase\s+([A-F])\s*:/);
         if (m) { state.phase = m[1]; break; }
       }
       if (state.phase) setPhase(state.phase);
 
-      // ── Progress bar ──
       for (let i = lines.length - 1; i >= 0; i--) {
         const m = lines[i].match(/\[PROGRESS:\s*(\d+)\]/);
         if (m) { state.pct = parseInt(m[1]); break; }
@@ -357,10 +338,6 @@ _start_preloader() {
         document.getElementById("pct-text").textContent = state.pct + "%";
       }
 
-      // ── Count nodes installed (look at [ok] and [+] lines from _install_node) ──
-      // Each node call emits a line like "  [ok] X (1/28) ..." or "  [+] X (3/28) cloning..."
-      // We capture BOTH the current index and the total — the total varies between releases
-      // (currently 28, was 27 previously). Don't hardcode it.
       let lastNodeIdx = 0;
       let nodesTotal = 0;
       for (const l of lines) {
@@ -368,7 +345,6 @@ _start_preloader() {
         if (m) {
           const idx = parseInt(m[1]);
           const tot = parseInt(m[2]);
-          // Only trust matches that look like node-install pace (total roughly 20-50, not e.g. download bytes)
           if (tot >= 10 && tot <= 100) {
             lastNodeIdx = Math.max(lastNodeIdx, idx);
             nodesTotal = Math.max(nodesTotal, tot);
@@ -377,13 +353,11 @@ _start_preloader() {
       }
       state.nodesDone = lastNodeIdx;
       document.getElementById("nodes-done").textContent = lastNodeIdx;
-      // Update the /N denominator if we learned the real total from the log
       if (nodesTotal > 0) {
         const denomEl = document.getElementById("nodes-total");
         if (denomEl) denomEl.textContent = nodesTotal;
       }
 
-      // ── Model tracking ──
       let modelsTotal = TOTAL_MODELS;
       for (const l of lines) {
         const m = l.match(/Found\s+(\d+)\s+models/);
@@ -391,7 +365,6 @@ _start_preloader() {
       }
       document.getElementById("models-total").textContent = modelsTotal;
 
-      // Walk the log in order to reconstruct state
       let successes = 0, failures = 0, currentLabel = null;
       for (const l of lines) {
         const startM = l.match(/\[STARTING\]\s*'([^']+)'/);
@@ -413,7 +386,6 @@ _start_preloader() {
       document.getElementById("models-done").textContent = successes;
       document.getElementById("weights-count-text").textContent = successes + " / " + totalForUI;
 
-      // Paint blocks
       if (successes + failures > 0) {
         document.getElementById("weights-panel").style.display = "block";
       }
@@ -425,7 +397,6 @@ _start_preloader() {
         else if (i === successes && currentLabel) b.classList.add("loading");
       }
 
-      // Current file + speed
       if (currentLabel) {
         document.getElementById("current-file").textContent = "\u25b8 " + currentLabel;
         const nowTs = Date.now();
@@ -446,25 +417,15 @@ _start_preloader() {
         document.getElementById("weights-speed").textContent = "";
       }
 
-      // ── ETA — bytes-based projection ──
-      // Strategy: from the log we know per-model declared size ("[dl] N bytes").
-      // We sum total bytes of the manifest, sum bytes of completed models, and
-      // project remaining time using the observed download rate.
-      // Falls back to pct-based extrapolation early in the run when we have no rate signal.
       try {
-        // Per-model declared sizes — match "  [dl] 12309866400 bytes"
         const sizesByOrder = [];
         for (const l of lines) {
           const m = l.match(/\[dl\]\s+(\d+)\s+bytes/);
           if (m) sizesByOrder.push(parseInt(m[1]));
         }
-        // Walk in order: bytes_done = sum of sizes of models that hit [SUCCESS]
         let bytesDone = 0, bytesTotal = 0, nextSizeIdx = 0, currentBytes = 0;
         for (const l of lines) {
-          if (l.match(/\[STARTING\]/)) {
-            // The next [dl] line gives us this model's size
-            // (we resolve it lazily below by reading the next "[dl]" after this STARTING)
-          }
+          if (l.match(/\[STARTING\]/)) {}
           const dl = l.match(/\[dl\]\s+(\d+)\s+bytes/);
           if (dl) {
             currentBytes = parseInt(dl[1]);
@@ -475,16 +436,13 @@ _start_preloader() {
             currentBytes = 0;
           }
           if (/^\[FAILED\]/.test(l)) {
-            // Treat failed as "won't be retried" — count as done so ETA doesn't stall on it
             bytesDone += currentBytes;
             currentBytes = 0;
           }
         }
 
-        // Rate: bytes per second. Prefer observed (recentBytesPerSec is in MB/s).
         let bps = (state.recentBytesPerSec || 0) * 1024 * 1024;
 
-        // If we don't have a rate signal yet but we've completed models, derive it from elapsed
         if (bps <= 0 && bytesDone > 0 && state.firstDownloadTs) {
           const dlElapsed = Math.max(1, (Date.now() - state.firstDownloadTs) / 1000);
           bps = bytesDone / dlElapsed;
@@ -496,30 +454,25 @@ _start_preloader() {
         const bytesRemaining = Math.max(0, bytesTotal - bytesDone);
         let etaSec = null;
 
-        // Primary: bytes-based projection using observed throughput
         if (bps > 1024 * 1024 && bytesTotal > 0 && bytesRemaining > 0) {
           etaSec = bytesRemaining / bps;
-          etaSec += 30;  // tail for Phase D (deploy + lockdown + finalize)
+          etaSec += 30;
         }
 
         if (etaSec == null && state.pct > 5 && state.pct < 98) {
-          // Fallback: pct-based extrapolation. Prefer install start time from
-          // the log itself ([OFM-INNER] Starting at <ISO>) so a page-reload
-          // mid-run doesn't reset the elapsed clock.
           let installStartMs = null;
           for (const l of lines) {
             const m = l.match(/Starting at\s+(\S+)/);
             if (m) { const t = Date.parse(m[1]); if (!isNaN(t)) installStartMs = t; break; }
           }
           const elapsed = ((Date.now() - (installStartMs || startTs))) / 1000;
-          if (elapsed > 30) {  // need at least 30s to make a sensible projection
+          if (elapsed > 30) {
             const totalEst = elapsed * (100 / state.pct);
             etaSec = Math.max(0, totalEst - elapsed);
           }
         }
 
         if (etaSec != null && etaSec >= 0) {
-          // Smooth — average against previous reading to prevent jitter
           if (state.lastEtaSec != null) {
             etaSec = state.lastEtaSec * 0.7 + etaSec * 0.3;
           }
@@ -531,9 +484,8 @@ _start_preloader() {
           else                    label = (etaSec / 3600).toFixed(1) + '<span class="sub"> hrs</span>';
           document.getElementById("eta").innerHTML = label;
         }
-      } catch (e) { /* ETA is best-effort, never break the UI */ }
+      } catch (e) {}
 
-      // ── Status text: pick from most recent significant line ──
       const statusEl = document.getElementById("status-text");
       if (text.includes("ACCESS DENIED") || text.includes("TOKEN REJECTED") || text.includes("LICENSE DENIED") || text.includes("AUTH ERROR") || text.includes("CRITICAL HALT")) {
         document.getElementById("main").classList.add("error-state");
@@ -609,9 +561,9 @@ _validate_token() {
         _show_error_page "NO TOKEN PROVIDED<br><br>OFMPATH_TOKEN environment variable not set.<br>Add it to your Vast.ai template env vars."
     fi
 
-    if ! [[ "$OFMPATH_TOKEN" =~ ^ofmpath_[A-Fa-f0-9]{40,64}$ ]]; then
+    if ! [[ "$OFMPATH_TOKEN" =~ ^OFMPATH-[A-Za-z0-9]{1,64}$ ]]; then
         echo "[OFM] FATAL: token format invalid"
-        _show_error_page "INVALID TOKEN FORMAT<br><br>Token must match pattern: ofmpath_ + 48 hex chars"
+        _show_error_page "INVALID TOKEN FORMAT<br><br>Token must match pattern: OFMPATH-XXXXXXX"
     fi
 
     # ── Capture public IP for token-IP binding (anti-leak protection) ──
@@ -727,7 +679,6 @@ _wait_for_comfy() {
     echo "[OFM] ✓ ComfyUI updated"
     cd "$WORKSPACE" || true
 
-    # Verify custom_nodes dir exists BEFORE inner runs
     if [ ! -d "$CUSTOM_NODES_DIR" ]; then
         echo "[OFM] Creating missing custom_nodes dir"
         mkdir -p "$CUSTOM_NODES_DIR"
@@ -746,7 +697,6 @@ _deploy_stack() {
     echo "=========================================="
     echo "[OFM] Deploying OFM PATH stack..."
 
-    # Sanity check: env vars MUST be set before we try to run the inner
     if [ -z "${OFMPATH_TOKEN:-}" ] || [ -z "${OFMPATH_PAYLOAD_KEY:-}" ]; then
         echo "[OFM] CRITICAL: env vars not set before deploy_stack"
         echo "[OFM]   OFMPATH_TOKEN=${OFMPATH_TOKEN:+SET(len=${#OFMPATH_TOKEN})}"
@@ -769,7 +719,6 @@ _deploy_stack() {
                 rm -f /tmp/ofmpath_install.sh.enc
                 chmod +x /tmp/ofmpath_install.sh
                 echo "[OFM] Executing inner installer..."
-                # CRITICAL: explicitly pass env to child so nothing is lost
                 env OFMPATH_TOKEN="$OFMPATH_TOKEN" \
                     OFMPATH_PAYLOAD_KEY="$OFMPATH_PAYLOAD_KEY" \
                     OFMPATH_SUPA_URL="$OFMPATH_SUPA_URL" \
@@ -796,7 +745,6 @@ _deploy_stack() {
     rm -f /tmp/ofmpath_install.sh
     echo "[OFM] ✓ Deploy stack phase complete"
 
-    # Post-install sanity: count what was actually installed
     local NODE_COUNT=$(ls -1 "$CUSTOM_NODES_DIR" 2>/dev/null | wc -l)
     local WF_COUNT=$(find "$COMFYUI_DIR/user/default/workflows/" -maxdepth 1 -iname "*.json" 2>/dev/null | wc -l)
     echo "[OFM] Installed: $NODE_COUNT custom nodes · $WF_COUNT workflows"
@@ -831,18 +779,9 @@ _lockdown_ui() {
     echo "=========================================="
     echo "[OFM] Installing persistent UI Lockdown watcher..."
 
-    # Optional branding (set via env vars in your Vast.ai template if you host your own).
     export OFMPATH_LOGO_URL="${OFMPATH_LOGO_URL:-}"
     export OFMPATH_BG_URL="${OFMPATH_BG_URL:-}"
 
-    # ── Write the watcher script to /usr/local/bin ──
-    # This script keeps re-patching on a loop. Why a loop:
-    # • At provisioning time, comfyui_frontend_package may not be installed yet
-    #   (ComfyUI fetches it on first launch via uv).
-    # • ComfyUI startup runs `uv sync` which can REINSTALL the frontend wheel,
-    #   wiping any earlier patch.
-    # • The watcher catches both cases — runs every N seconds, re-injects if the
-    #   marker is missing.
     cat > /usr/local/bin/ofmpath_lockdown.py << 'WATCHER_EOF'
 #!/usr/bin/env python3
 """OFMPATH UI lockdown watcher — keeps comfyui_frontend_package and
@@ -870,8 +809,6 @@ BOOT = (
     '</script>'
 )
 
-# Build patch_code with simple .format() — no f-string brace headaches
-# Note: CSS/JS literal braces stay as { }, only {LOGO_URL} and {BG_URL} are placeholders.
 PATCH_TEMPLATE = """
 <!-- OFMPATH NATIVE UI TWEAKS -->
 <style data-id="OFMPATH-NUKE">
@@ -882,318 +819,131 @@ PATCH_TEMPLATE = """
       background-attachment: fixed !important;
   }
   canvas.litegraph, canvas.lgraphcanvas { opacity: 0.92 !important; }
-
   .comfy-logo, .comfyui-logo, svg[class*="comfyui-logo"],
   [aria-label="Menu"], [data-pr-tooltip="Menu"],
   [data-pc-section="menuicon"] { display: none !important; }
-
   .p-sidebar-right, .p-dialog-right,
   [data-pc-name="sidebar"][class*="right"],
   .lite-searchbox, .comfyui-node-search, [class*="node-search"] { display: none !important; }
-
   #cm-manager-btn,
   button[id*="manager" i],
   [data-pr-tooltip*="Manager" i],
   [title*="Manager" i],
   [aria-label*="Manager" i] { display: none !important; }
-
-  /* Top-toolbar dangerous icon buttons — Unload Models / Free Cache / Share */
-  button[aria-label*="Unload" i],
-  button[aria-label*="Free Models" i],
-  button[aria-label*="Free Model" i],
-  button[aria-label*="Free Cache" i],
-  button[aria-label*="Free Memory" i],
-  button[aria-label*="Free model and node cache" i],
-  button[aria-label*="Free node cache" i],
-  button[aria-label*="Share" i],
-  button[data-pr-tooltip*="Unload" i],
-  button[data-pr-tooltip*="Free Models" i],
-  button[data-pr-tooltip*="Free Model" i],
-  button[data-pr-tooltip*="Free Cache" i],
-  button[data-pr-tooltip*="Free Memory" i],
-  button[data-pr-tooltip*="Share" i],
-  button[title*="Unload" i],
-  button[title*="Free Models" i],
-  button[title*="Free Model" i],
-  button[title*="Free Cache" i],
-  button[title*="Free Memory" i],
+  button[aria-label*="Unload" i], button[aria-label*="Free Models" i], button[aria-label*="Free Model" i],
+  button[aria-label*="Free Cache" i], button[aria-label*="Free Memory" i],
+  button[aria-label*="Free model and node cache" i], button[aria-label*="Free node cache" i],
+  button[aria-label*="Share" i], button[data-pr-tooltip*="Unload" i], button[data-pr-tooltip*="Free Models" i],
+  button[data-pr-tooltip*="Free Model" i], button[data-pr-tooltip*="Free Cache" i],
+  button[data-pr-tooltip*="Free Memory" i], button[data-pr-tooltip*="Share" i],
+  button[title*="Unload" i], button[title*="Free Models" i], button[title*="Free Model" i],
+  button[title*="Free Cache" i], button[title*="Free Memory" i],
   button[title*="Share" i] { display: none !important; visibility: hidden !important; }
-
   .crystools-root, .crystools-monitors-container,
   [class*="crystools"], [id*="crystools"] { display: none !important; visibility: hidden !important; }
-
-  .pysssss-image-feed,
-  button[title*="Image Feed"],
-  button[aria-label*="Image Feed"] { display: none !important; }
-
-  /* Left-rail sidebar nav buttons — Model Library / Node Library / Templates / Bookmarks / Apps / Workflows-list */
-  .side-tool-bar-container button[aria-label*="model" i],
-  .side-tool-bar-container button[aria-label*="node library" i],
+  .pysssss-image-feed, button[title*="Image Feed"], button[aria-label*="Image Feed"] { display: none !important; }
+  .side-tool-bar-container button[aria-label*="model" i], .side-tool-bar-container button[aria-label*="node library" i],
   .side-tool-bar-container button[aria-label*="nodes" i]:not([aria-label*="workflow" i]),
-  .side-tool-bar-container button[aria-label*="template" i],
-  .side-tool-bar-container button[aria-label*="bookmark" i],
-  .side-tool-bar-container button[aria-label*="apps" i],
-  .side-tool-bar-container button[aria-label*="queue" i],
-  .side-tool-bar-container button[data-pc-name="model-library"],
-  .side-tool-bar-container button[data-pc-name="node-library"],
-  .side-tool-bar-container button[data-pc-name="bookmarks"],
-  .side-tool-bar-container button[data-pc-name="templates"],
+  .side-tool-bar-container button[aria-label*="template" i], .side-tool-bar-container button[aria-label*="bookmark" i],
+  .side-tool-bar-container button[aria-label*="apps" i], .side-tool-bar-container button[aria-label*="queue" i],
+  .side-tool-bar-container button[data-pc-name="model-library"], .side-tool-bar-container button[data-pc-name="node-library"],
+  .side-tool-bar-container button[data-pc-name="bookmarks"], .side-tool-bar-container button[data-pc-name="templates"],
   .side-tool-bar-container button[data-pc-name="apps"],
-  .comfyui-side-bar button[aria-label*="model" i],
-  .comfyui-side-bar button[aria-label*="node library" i],
-  .comfyui-side-bar button[aria-label*="template" i],
-  .comfyui-side-bar button[aria-label*="bookmark" i],
-  .comfyui-side-bar button[aria-label*="apps" i],
-  .comfyui-side-bar button[data-pc-name="model-library"],
-  .comfyui-side-bar button[data-pc-name="node-library"],
-  .comfyui-side-bar button[data-pc-name="bookmarks"],
-  .comfyui-side-bar button[data-pc-name="templates"],
-  .comfyui-side-bar button[data-pc-name="apps"],
-  [class*='side-bar'] button[aria-label*="model" i],
-  [class*='side-bar'] button[aria-label*="node library" i],
+  .comfyui-side-bar button[aria-label*="model" i], .comfyui-side-bar button[aria-label*="node library" i],
+  .comfyui-side-bar button[aria-label*="template" i], .comfyui-side-bar button[aria-label*="bookmark" i],
+  .comfyui-side-bar button[aria-label*="apps" i], .comfyui-side-bar button[data-pc-name="model-library"],
+  .comfyui-side-bar button[data-pc-name="node-library"], .comfyui-side-bar button[data-pc-name="bookmarks"],
+  .comfyui-side-bar button[data-pc-name="templates"], .comfyui-side-bar button[data-pc-name="apps"],
+  [class*='side-bar'] button[aria-label*="model" i], [class*='side-bar'] button[aria-label*="node library" i],
   [class*='side-bar'] button[aria-label*="template" i],
   [class*='side-bar'] button[aria-label*="bookmark" i] { display: none !important; visibility: hidden !important; }
-
-  /* Sidebar panels themselves — Model Library, Node Library content panes */
-  [class*="model-library"],
-  [class*="node-library"],
-  [class*="ModelLibrary"],
-  [class*="NodeLibrary"],
-  [data-pc-name="model-library"],
-  [data-pc-name="node-library"],
-  [data-pc-name="templates"],
-  [data-pc-name="bookmarks"],
-  [data-pc-name="apps"] { display: none !important; }
-
-  /* Graph-dropdown / popover items — Save / Save As / Export / Export (API) / Rename / Duplicate / Delete / Add to Bookmarks */
-  /* These render as <li> or <div> inside .p-popover or .p-overlaypanel — we use :is() with attribute matching */
-  .p-popover [aria-label="Rename" i],
-  .p-popover [aria-label="Duplicate" i],
-  .p-popover [aria-label="Add to Bookmarks" i],
-  .p-popover [aria-label="Save" i],
-  .p-popover [aria-label="Save As" i],
-  .p-popover [aria-label="Export" i],
-  .p-popover [aria-label*="Export" i],
-  .p-popover [aria-label="Clear Workflow" i],
-  .p-popover [aria-label="Delete Workflow" i],
-  .p-overlaypanel [aria-label="Rename" i],
-  .p-overlaypanel [aria-label="Duplicate" i],
-  .p-overlaypanel [aria-label="Add to Bookmarks" i],
-  .p-overlaypanel [aria-label="Save" i],
-  .p-overlaypanel [aria-label="Save As" i],
-  .p-overlaypanel [aria-label*="Export" i],
-  .p-overlaypanel [aria-label="Clear Workflow" i],
+  [class*="model-library"], [class*="node-library"], [class*="ModelLibrary"], [class*="NodeLibrary"],
+  [data-pc-name="model-library"], [data-pc-name="node-library"], [data-pc-name="templates"],
+  [data-pc-name="bookmarks"], [data-pc-name="apps"] { display: none !important; }
+  .p-popover [aria-label="Rename" i], .p-popover [aria-label="Duplicate" i],
+  .p-popover [aria-label="Add to Bookmarks" i], .p-popover [aria-label="Save" i],
+  .p-popover [aria-label="Save As" i], .p-popover [aria-label="Export" i],
+  .p-popover [aria-label*="Export" i], .p-popover [aria-label="Clear Workflow" i],
+  .p-popover [aria-label="Delete Workflow" i], .p-overlaypanel [aria-label="Rename" i],
+  .p-overlaypanel [aria-label="Duplicate" i], .p-overlaypanel [aria-label="Add to Bookmarks" i],
+  .p-overlaypanel [aria-label="Save" i], .p-overlaypanel [aria-label="Save As" i],
+  .p-overlaypanel [aria-label*="Export" i], .p-overlaypanel [aria-label="Clear Workflow" i],
   .p-overlaypanel [aria-label="Delete Workflow" i] { display: none !important; }
 </style>
-
 <script data-id="OFMPATH-NUKE-JS">
-  // 1. Block double-click on canvas (kills LiteGraph node-search popup)
   window.addEventListener("dblclick", function(e) {
       if ((e.target.tagName && e.target.tagName.toLowerCase() === "canvas") || (e.target.closest && e.target.closest("canvas"))) {
           e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
       }
   }, true);
-
-  // 2. Block devtools + save/export/clipboard hotkeys
   window.addEventListener("keydown", function(e) {
     if (e.key === "F12") { e.preventDefault(); e.stopPropagation(); }
     if (e.ctrlKey && e.shiftKey && ["I","J","C","i","j","c"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
     if (e.ctrlKey && ["u","U","s","S","c","C","v","V","p","P","a","A","o","O","e","E"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
   }, true);
-
-  // 3. Surgical menu-item killer (top bar, sidebar, right-click context menus, popover dropdowns)
-  // NOTE: no "workflow" whitelist — we explicitly kill Save/Export/Clear/Delete Workflow
-  // because those are workflow-exfiltration vectors.
-  var killWords = [
-      // Top-bar dropdown items (Graph dropdown, etc.)
-      "rename", "duplicate", "add to bookmarks",
-      "save", "save as", "save workflow",
-      "export", "export (api)", "export workflow", "export api",
-      "download", "load", "load default", "import",
-      "clear workflow", "delete workflow", "delete",
-      // Sidebar tabs (Model Library, Nodes, etc.)
-      "model library", "node library", "nodes library",
-      "model browser", "node browser",
-      "models", "nodes", "assets", "templates", "node map", "nodesmap",
-      "blueprints", "subgraph blueprints", "partner nodes", "comfy nodes",
-      // Top-bar dangerous buttons
-      "manager", "workspace manager", "comfyui manager",
-      "experiments", "share",
-      "unload models", "unload model",
-      "free models", "free model and node cache", "free model", "free node cache",
-      "free memory", "free models and node cache",
-      "menu",
-      // Right-click on node/canvas
-      "properties", "properties panel",
-      "add node", "convert to subgraph", "convert to group",
-      "clone", "node help", "add ue broadcasting",
-      // Right-click cosmetic / dangerous node options
-      "title", "mode", "resize", "collapse",
-      "pin", "unpin",
-      "colors", "shapes",
-      "copy (clipspace)", "copy clipspace",
-      "remove",
-      // Misc
-      "help", "console", "settings", "translate"
-  ];
-
-  // Phrases that should NEVER hide an element (whitelist for false positives).
-  // - "workflows" / "workflow library" — top-level user-facing
-  // - "title bar" / "set title" — sometimes labels for KEEP items
-  // - "remove from bookmarks" — would be hidden by "remove" otherwise (we want bookmarks ops working)
-  // - reload/reject/etc — items the user explicitly wanted to keep
-  var keepIfContains = [
-    "workflow library", "workflows",
-    "remove from bookmarks",
-    "reload node", "reset",
-    "bypass",                  // node-functional
-    "swap width", "swap height",
-    "fix node", "recreate",
-    "reject ue links", "ue connectable",
-    "add getnode", "add setnode", "add previewastextnode",
-    "convert all outputs",
-    "open in sam"
-  ];
-
-  // Containers to scan. Includes popovers/overlays (Graph dropdown), all sidebars, all menus.
-  var menuSelectors = [
-      "header", ".p-toolbar", "[class*='topbar']", "[class*='top-bar']",
-      ".litecontextmenu", ".comfy-menu",
-      ".p-menubar", ".p-menu", ".p-panelmenu", ".p-tieredmenu", ".p-contextmenu",
-      ".p-popover", ".p-popover-content", ".p-overlaypanel", ".p-overlaypanel-content",
-      ".p-sidebar", ".p-sidebar-content",
-      ".side-tool-bar-container", ".comfyui-side-bar",
-      "nav", "aside",
-      "[class*='comfyui-menu']", "[class*='sidebar']",
-      "[role='menu']", "[role='listbox']"
-  ].join(", ");
-
-  // ALL descendants worth checking inside a container.
-  // Includes <div> and role-based selectors because ComfyUI's new nav uses those.
+  var killWords = ["rename","duplicate","add to bookmarks","save","save as","save workflow","export","export (api)","export workflow","export api","download","load","load default","import","clear workflow","delete workflow","delete","model library","node library","nodes library","model browser","node browser","models","nodes","assets","templates","node map","nodesmap","blueprints","subgraph blueprints","partner nodes","comfy nodes","manager","workspace manager","comfyui manager","experiments","share","unload models","unload model","free models","free model and node cache","free model","free node cache","free memory","free models and node cache","menu","properties","properties panel","add node","convert to subgraph","convert to group","clone","node help","add ue broadcasting","title","mode","resize","collapse","pin","unpin","colors","shapes","copy (clipspace)","copy clipspace","remove","help","console","settings","translate"];
+  var keepIfContains = ["workflow library","workflows","remove from bookmarks","reload node","reset","bypass","swap width","swap height","fix node","recreate","reject ue links","ue connectable","add getnode","add setnode","add previewastextnode","convert all outputs","open in sam"];
+  var menuSelectors = ["header",".p-toolbar","[class*='topbar']","[class*='top-bar']",".litecontextmenu",".comfy-menu",".p-menubar",".p-menu",".p-panelmenu",".p-tieredmenu",".p-contextmenu",".p-popover",".p-popover-content",".p-overlaypanel",".p-overlaypanel-content",".p-sidebar",".p-sidebar-content",".side-tool-bar-container",".comfyui-side-bar","nav","aside","[class*='comfyui-menu']","[class*='sidebar']","[role='menu']","[role='listbox']"].join(", ");
   var innerSelectors = "li, a, button, div, span, .p-menuitem, .litemenu-entry, .p-button, [role='menuitem'], [role='option'], [role='button'], [role='tab']";
-
   function shouldHide(blob) {
-    for (var k = 0; k < keepIfContains.length; k++) {
-      if (blob.indexOf(keepIfContains[k]) !== -1) return false;
-    }
+    for (var k = 0; k < keepIfContains.length; k++) { if (blob.indexOf(keepIfContains[k]) !== -1) return false; }
     for (var i = 0; i < killWords.length; i++) {
       var w = killWords[i];
-      // Match if blob equals word, or contains word as a "token" (surrounded by spaces/start/end)
       if (blob === w) return true;
       var idx = blob.indexOf(w);
       if (idx === -1) continue;
       var before = idx === 0 ? " " : blob.charAt(idx - 1);
       var after  = idx + w.length >= blob.length ? " " : blob.charAt(idx + w.length);
       if (/[\s\(\)\[\]\.,;:|\/]/.test(before) && /[\s\(\)\[\]\.,;:|\/]/.test(after)) return true;
-      // Also match short whole-string buttons where the entire text IS the kill word
       if (blob.trim() === w) return true;
     }
     return false;
   }
-
   function elementBlob(el) {
-    return [
-      (el.getAttribute && el.getAttribute("aria-label")) || "",
-      (el.getAttribute && el.getAttribute("title")) || "",
-      (el.getAttribute && el.getAttribute("data-pr-tooltip")) || "",
-      (el.getAttribute && el.getAttribute("data-pc-name")) || "",
-      (el.getAttribute && el.getAttribute("id")) || "",
-      el.innerText || el.textContent || ""
-    ].join(" ").trim().toLowerCase();
+    return [(el.getAttribute&&el.getAttribute("aria-label"))||"",(el.getAttribute&&el.getAttribute("title"))||"",(el.getAttribute&&el.getAttribute("data-pr-tooltip"))||"",(el.getAttribute&&el.getAttribute("data-pc-name"))||"",(el.getAttribute&&el.getAttribute("id"))||"",el.innerText||el.textContent||""].join(" ").trim().toLowerCase();
   }
-
   function hideAndAncestor(el) {
-    // Hide the element itself
     el.style.display = "none";
-    // ALSO hide its closest <li>, role=menuitem, or role=option — sometimes the
-    // visible row is a parent wrapper, not the element with the text.
     var parent = el.closest && (el.closest("li") || el.closest("[role='menuitem']") || el.closest("[role='option']") || el.closest(".p-menuitem"));
     if (parent && parent !== el) parent.style.display = "none";
   }
-
   function tick() {
     try {
-      // Pass 1: scan inside known menu containers
       document.querySelectorAll(menuSelectors).forEach(function(container) {
         container.querySelectorAll(innerSelectors).forEach(function(el) {
-          // Skip elements that are themselves containers of MANY children (avoid nuking entire panels here)
           if (el.children && el.children.length > 8) return;
-          var blob = elementBlob(el);
-          if (!blob) return;
+          var blob = elementBlob(el); if (!blob) return;
           if (shouldHide(blob)) hideAndAncestor(el);
         });
       });
-
-      // Pass 2: kill entire sidebar panels (Model Library, Nodes browser) — these
-      // render as <aside>/<div> with a header containing the panel name.
       document.querySelectorAll("aside, [class*='sidebar'], .p-sidebar, [class*='side-bar'], [data-pc-name='sidebar']").forEach(function(panel) {
-        // Find a header/title element inside the panel
         var headers = panel.querySelectorAll("h1, h2, h3, h4, [class*='title'], [class*='header']");
         for (var h = 0; h < headers.length; h++) {
           var blob = (headers[h].innerText || headers[h].textContent || "").trim().toLowerCase();
-          if (blob === "nodes" || blob === "model library" || blob === "node library" ||
-              blob === "models" || blob === "models library" || blob === "nodes library" ||
-              blob === "templates" || blob === "node map" || blob === "bookmarks" || blob === "manager") {
-            panel.style.display = "none";
-            break;
-          }
+          if (blob === "nodes" || blob === "model library" || blob === "node library" || blob === "models" || blob === "models library" || blob === "nodes library" || blob === "templates" || blob === "node map" || blob === "bookmarks" || blob === "manager") { panel.style.display = "none"; break; }
         }
       });
-
-      // Pass 3: kill sidebar nav rail buttons (the icons that open Nodes/Models/etc panels).
-      // These live in .side-tool-bar-container or [class*='side-bar'] as buttons.
       document.querySelectorAll(".side-tool-bar-container button, .comfyui-side-bar button, [class*='side-bar'] button, [class*='sidebar'] button").forEach(function(btn) {
-        var blob = elementBlob(btn);
-        if (shouldHide(blob)) hideAndAncestor(btn);
+        var blob = elementBlob(btn); if (shouldHide(blob)) hideAndAncestor(btn);
       });
-
-      // Pass 4: global fallback — any button/link with manager/crystools text anywhere
       document.querySelectorAll("button, a").forEach(function(el) {
         var blob = elementBlob(el);
-        if (blob.indexOf("manager") !== -1 || blob.indexOf("crystools") !== -1) {
-          hideAndAncestor(el);
-        }
+        if (blob.indexOf("manager") !== -1 || blob.indexOf("crystools") !== -1) hideAndAncestor(el);
       });
     } catch (e) {}
   }
-
   function startObserver() {
     if (!document.body) { setTimeout(startObserver, 50); return; }
     tick();
-    new MutationObserver(tick).observe(document.body, {
-      childList: true, subtree: true, characterData: true,
-      attributes: true,
-      attributeFilter: ["data-pr-tooltip", "aria-label", "title", "id", "class"]
-    });
-
-    // Optional logo
+    new MutationObserver(tick).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-pr-tooltip", "aria-label", "title", "id", "class"] });
     var LOGO = "__LOGO_URL__";
-    if (LOGO && LOGO.length > 0) {
-      var logo = document.createElement("img");
-      logo.src = LOGO;
-      logo.style.cssText = "position: fixed; top: 15px; right: 30px; height: 50px; z-index: 10000; pointer-events: none; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.5));";
-      document.body.appendChild(logo);
-    }
+    if (LOGO && LOGO.length > 0) { var logo = document.createElement("img"); logo.src = LOGO; logo.style.cssText = "position: fixed; top: 15px; right: 30px; height: 50px; z-index: 10000; pointer-events: none; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.5));"; document.body.appendChild(logo); }
     var BG = "__BG_URL__";
-    if (BG && BG.length > 0) {
-      document.body.classList.add("ofmpath-bg");
-      var app = document.getElementById("app");
-      if (app) app.classList.add("ofmpath-bg");
-    }
+    if (BG && BG.length > 0) { document.body.classList.add("ofmpath-bg"); var app = document.getElementById("app"); if (app) app.classList.add("ofmpath-bg"); }
   }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startObserver);
-  } else {
-    startObserver();
-  }
-
-  // 4. Override LiteGraph search box from inside the engine
+  if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", startObserver); } else { startObserver(); }
   var ofmpathLG = setInterval(function() {
-    if (window.LiteGraph && window.LGraphCanvas) {
-      window.LGraphCanvas.prototype.showSearchBox = function() { return false; };
-      window.LiteGraph.search_hide_on_mouse_leave = true;
-      clearInterval(ofmpathLG);
-    }
+    if (window.LiteGraph && window.LGraphCanvas) { window.LGraphCanvas.prototype.showSearchBox = function() { return false; }; window.LiteGraph.search_hide_on_mouse_leave = true; clearInterval(ofmpathLG); }
   }, 500);
 </script>
 <!-- /OFMPATH NATIVE UI TWEAKS -->
@@ -1201,23 +951,17 @@ PATCH_TEMPLATE = """
 
 
 def discover_targets():
-    """Find every plausible frontend index.html on disk, RIGHT NOW."""
     candidates = []
     try:
         for sp in site.getsitepackages():
             candidates.append(os.path.join(sp, "comfyui_frontend_package", "static", "index.html"))
-    except Exception:
-        pass
-    try:
-        candidates.append(os.path.join(site.getusersitepackages(), "comfyui_frontend_package", "static", "index.html"))
-    except Exception:
-        pass
-    # /venv/main is where Vast's vast-pytorch image puts the comfy venv
+    except Exception: pass
+    try: candidates.append(os.path.join(site.getusersitepackages(), "comfyui_frontend_package", "static", "index.html"))
+    except Exception: pass
     for venv in ("/venv/main", "/opt/venv", "/usr"):
         for py in ("python3.10", "python3.11", "python3.12", "python3.13"):
             candidates.append(os.path.join(venv, "lib", py, "site-packages", "comfyui_frontend_package", "static", "index.html"))
     candidates.append(os.path.join(COMFYUI_DIR, "web", "index.html"))
-
     seen, targets = set(), []
     for p in candidates:
         if p and p not in seen and os.path.isfile(p):
@@ -1226,26 +970,14 @@ def discover_targets():
 
 
 def patch(path):
-    """Patch a single index.html. Returns True if it was patched, False if already patched or failed."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        if MARKER in content:
-            return False  # already patched
-
-        patch_code = (PATCH_TEMPLATE
-                      .replace("__BG_URL__",   BG_URL)
-                      .replace("__LOGO_URL__", LOGO_URL))
-
-        if "</head>" in content:
-            new_content = content.replace("</head>", BOOT + patch_code + "\n</head>", 1)
-        elif "<head>" in content:
-            new_content = content.replace("<head>", "<head>" + BOOT + patch_code, 1)
-        else:
-            new_content = BOOT + patch_code + content
-
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(new_content)
+        with open(path, "r", encoding="utf-8") as f: content = f.read()
+        if MARKER in content: return False
+        patch_code = (PATCH_TEMPLATE.replace("__BG_URL__", BG_URL).replace("__LOGO_URL__", LOGO_URL))
+        if "</head>" in content: new_content = content.replace("</head>", BOOT + patch_code + "\n</head>", 1)
+        elif "<head>" in content: new_content = content.replace("<head>", "<head>" + BOOT + patch_code, 1)
+        else: new_content = BOOT + patch_code + content
+        with open(path, "w", encoding="utf-8") as f: f.write(new_content)
         return True
     except Exception as e:
         sys.stderr.write("[OFMPATH-LOCKDOWN] failed to patch {}: {}\n".format(path, e))
@@ -1254,8 +986,7 @@ def patch(path):
 
 def run_once():
     targets = discover_targets()
-    if not targets:
-        return 0, 0
+    if not targets: return 0, 0
     patched = 0
     for t in targets:
         if patch(t):
@@ -1270,13 +1001,10 @@ def main():
         patched, total = run_once()
         print("[OFMPATH-LOCKDOWN] one-shot: patched={} of {} files found".format(patched, total))
         return 0
-    # watch mode (default)
     print("[OFMPATH-LOCKDOWN] watcher started (interval={}s)".format(INTERVAL), flush=True)
     while True:
-        try:
-            run_once()
-        except Exception as e:
-            sys.stderr.write("[OFMPATH-LOCKDOWN] tick error: {}\n".format(e))
+        try: run_once()
+        except Exception as e: sys.stderr.write("[OFMPATH-LOCKDOWN] tick error: {}\n".format(e))
         time.sleep(INTERVAL)
 
 
@@ -1286,7 +1014,6 @@ WATCHER_EOF
     chmod +x /usr/local/bin/ofmpath_lockdown.py
     echo "[OFM] ✓ Watcher script written to /usr/local/bin/ofmpath_lockdown.py"
 
-    # ── Install as supervisor service ──
     cat > /etc/supervisor/conf.d/ofmpath_lockdown.conf << SUPV_EOF
 [program:ofmpath_lockdown]
 command=/usr/bin/env python3 /usr/local/bin/ofmpath_lockdown.py watch
@@ -1300,11 +1027,9 @@ environment=OFMPATH_LOGO_URL="${OFMPATH_LOGO_URL}",OFMPATH_BG_URL="${OFMPATH_BG_
 SUPV_EOF
     echo "[OFM] ✓ Supervisor service registered: ofmpath_lockdown"
 
-    # ── Run once synchronously now (will be a no-op if frontend not installed yet — watcher handles that) ──
     OFMPATH_LOGO_URL="$OFMPATH_LOGO_URL" OFMPATH_BG_URL="$OFMPATH_BG_URL" COMFYUI_DIR="$COMFYUI_DIR" \
         python3 /usr/local/bin/ofmpath_lockdown.py once || true
 
-    # ── Reload supervisor so the watcher actually starts ──
     supervisorctl reread >/dev/null 2>&1 || true
     supervisorctl update  >/dev/null 2>&1 || true
     supervisorctl start ofmpath_lockdown >/dev/null 2>&1 || true
@@ -1358,7 +1083,6 @@ _finalize() {
     echo "     SYSTEM FULLY OPERATIONAL             "
     echo "=========================================="
 
-    # Snapshot the final log to a permanent location BEFORE cleanup
     cp /tmp/ofmpath_loading/install.log "$WORKSPACE/ofmpath_install.log" 2>/dev/null || true
 
     echo "SYSTEM FULLY OPERATIONAL" >> /tmp/ofmpath_loading/install.log 2>/dev/null || true
@@ -1399,9 +1123,6 @@ _finalize() {
         fi
         sleep 1
     done
-
-    # Preserve logs — do NOT rm -rf /tmp/ofmpath_loading
-    # The install.log is also saved to $WORKSPACE/ofmpath_install.log for debugging.
 
     echo "[OFM] ═══════════════════════════════════"
     echo "[OFM] Deployment complete — debug log: $WORKSPACE/ofmpath_install.log"
@@ -1448,7 +1169,6 @@ _show_error_page() {
 ERRHTML
 
     echo "[OFM] Error page deployed — blocking forever"
-    # Trap signals so nothing wakes us up
     trap '' SIGTERM SIGINT
     while true; do sleep 3600; done
 }
