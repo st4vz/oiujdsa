@@ -197,7 +197,7 @@ else
     _install_node "ComfyUI-ZMG-Nodes"              "https://github.com/fq393/ComfyUI-ZMG-Nodes"
     _install_node "ComfyUI-WanAnimatePreprocess"   "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
     _install_node "ComfyUI-SAM3"                   "https://github.com/PozzettiAndrea/ComfyUI-SAM3"
-    _install_node "audio-separation-nodes-comfyui"  "https://github.com/DreamWall-Animation/audio-separation-nodes-comfyui"
+    _install_node "audio-separation-nodes-comfyui"  "https://github.com/christian-byrne/audio-separation-nodes-comfyui"
     _install_node "comfy-mtb"                       "https://github.com/melMass/comfy_mtb"
 
     # KJNodes compat fix
@@ -357,7 +357,7 @@ _dl "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" \
  
 # ULTRALYTICS BBOX (11)
 _dl "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/face_yolov8s.pt" "bbox_face"
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" "bbox_face"
 _dl "$MODELS/ultralytics/bbox" "femaleBodyDetection_yolo26.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/femaleBodyDetection_yolo26.pt" "bbox_body"
 _dl "$MODELS/ultralytics/bbox" "female_breast-v4.2.pt" \
@@ -375,7 +375,7 @@ _dl "$MODELS/ultralytics/bbox" "Eyes.pt" \
 _dl "$MODELS/ultralytics/bbox" "FacesV1.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/FacesV1.pt" "bbox_faces"
 _dl "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/hand_yolov8s.pt" "bbox_hand"
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" "bbox_hand"
 _dl "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
     "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt" "bbox_foot"
  
