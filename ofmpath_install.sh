@@ -132,7 +132,7 @@ fi
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE B — INSTALL CUSTOM NODES (27)
+#  PHASE B — INSTALL CUSTOM NODES (29)
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase B: Install custom nodes ━━━"
 echo "[PROGRESS: 42]"
@@ -150,13 +150,13 @@ else
     _install_node() {
         local name="$1" url="$2"
         _NODE_IDX=$((_NODE_IDX + 1))
-        local pct=$(( 42 + (_NODE_IDX * 12 / 27) ))
+        local pct=$(( 42 + (_NODE_IDX * 12 / 29) ))
         echo "[PROGRESS: ${pct}]"
 
         if [ -d "$name" ]; then
-            echo "  [ok] $name (${_NODE_IDX}/27) [already present]"
+            echo "  [ok] $name (${_NODE_IDX}/29) [already present]"
         else
-            echo "  [+] $name (${_NODE_IDX}/27) cloning..."
+            echo "  [+] $name (${_NODE_IDX}/29) cloning..."
             if ! timeout 120 git clone --depth 1 "$url" "$name" 2>&1 | tail -3; then
                 echo "  [!] Clone timeout/failed: $name (continuing)"
                 return 0
@@ -197,6 +197,8 @@ else
     _install_node "ComfyUI-ZMG-Nodes"              "https://github.com/fq393/ComfyUI-ZMG-Nodes"
     _install_node "ComfyUI-WanAnimatePreprocess"   "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
     _install_node "ComfyUI-SAM3"                   "https://github.com/PozzettiAndrea/ComfyUI-SAM3"
+    _install_node "audio-separation-nodes-comfyui"  "https://github.com/DreamWall-Animation/audio-separation-nodes-comfyui"
+    _install_node "comfy-mtb"                       "https://github.com/melMass/comfy_mtb"
 
     # KJNodes compat fix
     KJ="$CUSTOM_NODES_DIR/ComfyUI-KJNodes/nodes/nodes.py"
@@ -431,6 +433,22 @@ if [ -f "$MODELS/ultralytics/bbox/hand_yolov8s.pt" ]; then
     echo "[OFM-INNER] ✓ Copied hand_yolov8s to checkpoints/bbox"
 fi
 echo "[OFM-INNER] ✓ Path fixes applied"
+
+# Fix 5: LIPSYNC workflow expects loras in checkpoints/ (detect-style references)
+for _f in gpu.safetensors real.safetensors XXX.safetensors; do
+    if [ -f "$MODELS/loras/$_f" ]; then
+        cp "$MODELS/loras/$_f" "$MODELS/checkpoints/" 2>/dev/null || true
+    fi
+done
+echo "[OFM-INNER] ✓ Copied gpu/real/XXX loras to checkpoints"
+
+# Fix 6: LIPSYNC expects bbox detectors in checkpoints/bbox
+for _f in assdetailer.pt female_breast-v4.2.pt vagina-v4.2.pt; do
+    if [ -f "$MODELS/ultralytics/bbox/$_f" ]; then
+        cp "$MODELS/ultralytics/bbox/$_f" "$MODELS/checkpoints/bbox/" 2>/dev/null || true
+    fi
+done
+echo "[OFM-INNER] ✓ Copied LIPSYNC bbox models to checkpoints/bbox"
  
 
 
