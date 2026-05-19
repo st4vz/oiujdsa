@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════
-#  OFM PATH 智慧通路 — Inner Installer  (hardened v2)
+#  OFM PATH 智慧通路 — Inner Installer  (hardened v2 + LIPSYNC)
 #  Fetched + decrypted by ofmpath_main.sh from Supabase bucket.
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -63,7 +63,7 @@ _decrypt_secure() {
 echo -e "\n\n"
 echo "╔════════════════════════════════════════════════════════════════╗"
 echo "║  OFM PATH 智慧通路  v1 — Inner Installer                       ║"
-echo "║  OFMPATH ANIMATOR + OFMPATH T2I                                ║"
+echo "║  OFMPATH ANIMATOR + OFMPATH T2I + OFMPATH LIPSYNC              ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 
 
@@ -77,6 +77,7 @@ mkdir -p "$WORKFLOWS_DIR" "$COMFYUI_DIR/input"
 
 WORKFLOW_MOTION=""
 WORKFLOW_T2I=""
+WORKFLOW_LIPSYNC=""
 
 if _fetch_secure "ofmpath_motion.json.enc" /tmp/motion.enc; then
     echo "[OFM-INNER] Fetched motion ($(stat -c%s /tmp/motion.enc) bytes)"
@@ -112,9 +113,26 @@ else
     echo "[OFM-INNER] ✗ T2I fetch failed"
 fi
 
+if _fetch_secure "OFMPATH_LIPSYNC.json.enc" /tmp/lipsync.enc; then
+    echo "[OFM-INNER] Fetched lipsync ($(stat -c%s /tmp/lipsync.enc) bytes)"
+    if _decrypt_secure /tmp/lipsync.enc /tmp/lipsync.json; then
+        if python3 -c "import json; d=json.load(open('/tmp/lipsync.json')); assert 'nodes' in d" 2>/dev/null; then
+            WORKFLOW_LIPSYNC=/tmp/lipsync.json
+            echo "[OFM-INNER] ✓ OFMPATH LIPSYNC workflow decrypted + validated"
+        else
+            echo "[OFM-INNER] ✗ LIPSYNC JSON invalid after decrypt"
+        fi
+    else
+        echo "[OFM-INNER] ✗ LIPSYNC decrypt failed (wrong key?)"
+    fi
+    rm -f /tmp/lipsync.enc
+else
+    echo "[OFM-INNER] ✗ LIPSYNC fetch failed"
+fi
+
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE B — INSTALL CUSTOM NODES (28)
+#  PHASE B — INSTALL CUSTOM NODES (27)
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase B: Install custom nodes ━━━"
 echo "[PROGRESS: 42]"
@@ -193,14 +211,14 @@ fi
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE C — DOWNLOAD MODELS (51 total, was 49)
+#  PHASE C — DOWNLOAD MODELS (57 total)
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C: Download models ━━━"
 echo "[PROGRESS: 55]"
-echo "Found 51 models to verify"
+echo "Found 57 models to verify"
  
 _MODEL_IDX=0
-_MODEL_TOTAL=51  # Increased from 49 to 51 (added 2 SeedVR2 models)
+_MODEL_TOTAL=57
  
 _dl() {
     local dir="$1" file="$2" url="$3" label="${4:-asset}"
@@ -305,6 +323,20 @@ _dl "$MODELS/loras" "WanPusa.safetensors" \
 _dl "$MODELS/loras" "wan.reworked.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors" "lora_wanrw"
  
+# LIPSYNC-SPECIFIC MODELS (6)
+_dl "$MODELS/loras" "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" "lora_lightx2v"
+_dl "$MODELS/loras" "Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" \
+    "https://huggingface.co/Kijai/Wan2.1-Fun-Reward-LoRAs-comfy/resolve/main/Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" "lora_funreward"
+_dl "$MODELS/text_encoders" "umt5-xxl-enc-fp8_e4m3fn.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors" "umt5_kj_fp8"
+_dl "$MODELS/vae" "Wan2_1_VAE_bf16.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors" "vae_wan_bf16"
+_dl "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" "wan_i2v_480p"
+_dl "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" "infinitetalk"
+
 # DETECTION (3)
 _dl "$MODELS/detection" "yolov10m.onnx" \
     "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" "det_yolo"
@@ -362,7 +394,7 @@ _dl "$_QWEN_DIR" "vocab.json"                   "$_QWEN_BASE/vocab.json"        
 _dl "$_QWEN_DIR" "model-00001-of-00002.safetensors" "$_QWEN_BASE/model-00001-of-00002.safetensors" "qwen_shard1"
 _dl "$_QWEN_DIR" "model-00002-of-00002.safetensors" "$_QWEN_BASE/model-00002-of-00002.safetensors" "qwen_shard2"
  
-# SEEDVR2 (2) - NEW: Required by SeedVR2 video upscaler node
+# SEEDVR2 (2)
 _dl "$MODELS/SEEDVR2" "seedvr2_ema_7b_sharp_fp16.safetensors" \
     "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" "seedvr2_dit"
 _dl "$MODELS/SEEDVR2" "ema_vae_fp16.safetensors" \
@@ -371,7 +403,7 @@ _dl "$MODELS/SEEDVR2" "ema_vae_fp16.safetensors" \
 echo "[OFM-INNER] ✓ Phase C model downloads complete"
  
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE C.5 — MODEL PATH FIXES (NEW PHASE)
+#  PHASE C.5 — MODEL PATH FIXES
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C.5: Model path fixes ━━━"
  
@@ -430,10 +462,11 @@ _deploy_workflow() {
     fi
 }
 
-_deploy_workflow "$WORKFLOW_MOTION" "OFMPATH ANIMATOR.json"
-_deploy_workflow "$WORKFLOW_T2I"    "OFMPATH T2I.json"
+_deploy_workflow "$WORKFLOW_MOTION"  "OFMPATH ANIMATOR.json"
+_deploy_workflow "$WORKFLOW_T2I"     "OFMPATH T2I.json"
+_deploy_workflow "$WORKFLOW_LIPSYNC" "OFMPATH LIPSYNC.json"
 
-rm -f /tmp/motion.json /tmp/t2i.json
+rm -f /tmp/motion.json /tmp/t2i.json /tmp/lipsync.json
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -475,12 +508,12 @@ echo "[OFM-INNER] ✓ Settings written"
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase F: Inventory ━━━"
 _total_files=0
-for _d in diffusion_models text_encoders clip_vision vae controlnet loras checkpoints sams upscale_models detection ultralytics/bbox LLM; do
+for _d in diffusion_models diffusion_models/InfiniteTalk text_encoders clip_vision vae controlnet loras checkpoints sams upscale_models detection ultralytics/bbox LLM SEEDVR2; do
     _p="$MODELS/$_d"
     [ -d "$_p" ] || continue
-    _n=$(find "$_p" -type f 2>/dev/null | wc -l)
+    _n=$(find "$_p" -maxdepth 1 -type f 2>/dev/null | wc -l)
     _sz=$(du -sh "$_p" 2>/dev/null | cut -f1)
-    printf "  %-22s %3d files  %s\n" "$_d" "$_n" "$_sz"
+    printf "  %-30s %3d files  %s\n" "$_d" "$_n" "$_sz"
     _total_files=$((_total_files + _n))
 done
 echo "  ──────────────────────────────────────────"
