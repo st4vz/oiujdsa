@@ -257,6 +257,15 @@ _dl() {
     local hdr=""
     [ $is_hf -eq 1 ] && hdr="Authorization: Bearer $HF_TOKEN"
 
+    # ── XET bypass: append ?download=true to HF resolve URLs ──
+    # HuggingFace migrated repos to XET storage; bare /resolve/ URLs
+    # return 302→XET which breaks curl/aria2c. ?download=true forces
+    # the legacy LFS-compatible direct download path.
+    if [ $is_hf -eq 1 ] && [[ "$url" =~ /resolve/ ]] && [[ "$url" != *"?download=true"* ]]; then
+        url="${url}?download=true"
+        echo "  [hf] XET bypass: appended ?download=true"
+    fi
+
     local ok=0
 
     # ── Strategy 1: curl (primary — handles XET 302 redirects reliably) ──
@@ -469,6 +478,10 @@ _verify_or_retry() {
     echo "[OFM-INNER]   → Aggressive retry (3 attempts, no auth, single-conn)..."
     mkdir -p "$dir"
     rm -f "$path"
+    # XET bypass for HF URLs
+    if [[ "$url" =~ huggingface\.co ]] && [[ "$url" =~ /resolve/ ]] && [[ "$url" != *"?download=true"* ]]; then
+        url="${url}?download=true"
+    fi
     local attempt=0
     while [ $attempt -lt 3 ]; do
         attempt=$((attempt+1))
