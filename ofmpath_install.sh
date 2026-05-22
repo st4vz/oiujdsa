@@ -233,12 +233,7 @@ export HF_HUB_DISABLE_SYMLINKS_WARNING=1
 _MODEL_IDX=0
 _MODEL_TOTAL=57
 
-# ─── v3: Hardened download function ───
-# Fixes HuggingFace XET storage compat: curl-first strategy with explicit
-# redirect following.  aria2c multi-connection breaks on XET 302 redirects,
-# so we only use aria2c for non-HF URLs or as a last-resort fallback.
-# Also: try WITHOUT auth header first for public repos — a stale/bad token
-# can turn a 200 into a 403.
+# v4: aria2c/curl primary for speed, hf_hub_download as XET fallback only.
 _dl() {
     local dir="$1" file="$2" url="$3" label="${4:-asset}"
     _MODEL_IDX=$((_MODEL_IDX + 1))
@@ -264,73 +259,66 @@ _dl() {
     local is_hf=0
     [[ "$url" =~ huggingface\.co ]] && is_hf=1
     local ok=0
+    local dl_url="$url"
+    # Append ?download=true for HF resolve URLs (XET LFS bypass)
+    if [ $is_hf -eq 1 ] && [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]]; then
+        dl_url="${dl_url}?download=true"
+    fi
+    local hdr=""
+    [ $is_hf -eq 1 ] && [ -n "${HF_TOKEN:-}" ] && hdr="Authorization: Bearer $HF_TOKEN"
 
-    # ── Strategy 1 (HF only): huggingface_hub Python library ──
-    # This handles XET storage, auth, resumption natively.
-    # Parse URL: https://huggingface.co/{repo}/resolve/{rev}/{path}
-    if [ $ok -eq 0 ] && [ $is_hf -eq 1 ]; then
-        local hf_repo hf_filepath
-        # Extract repo_id and filepath from URL
-        hf_repo=$(echo "$url" | sed -n 's|https://huggingface\.co/\([^/]*/[^/]*\)/resolve/.*|\1|p')
-        hf_filepath=$(echo "$url" | sed -n 's|https://huggingface\.co/[^/]*/[^/]*/resolve/[^/]*/\(.*\)|\1|p')
-        # Strip query params from filepath
-        hf_filepath=$(echo "$hf_filepath" | sed 's/?.*//')
-        # URL-decode %2F etc
-        hf_filepath=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('$hf_filepath'))" 2>/dev/null || echo "$hf_filepath")
-
-        if [ -n "$hf_repo" ] && [ -n "$hf_filepath" ]; then
-            echo "  [hf-hub] repo=$hf_repo file=$hf_filepath"
-            if python3 -c "
-import shutil, os
-from huggingface_hub import hf_hub_download
-path = hf_hub_download(repo_id='$hf_repo', filename='$hf_filepath', token=False)
-os.makedirs('$dir', exist_ok=True)
-shutil.copy2(path, '$dir/$file')
-print(f'  [hf-hub] OK: {os.path.getsize(\"$dir/$file\")} bytes')
-" 2>&1; then
-                ok=1
-            else
-                echo "  [hf-hub] Failed, falling through to curl..."
+    # ── Strategy 1: aria2c multi-connection (FAST) ──
+    if [ $ok -eq 0 ] && command -v aria2c >/dev/null 2>&1; then
+        rm -f "$dir/$file"
+        if [ -n "$hdr" ]; then
+            timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M \
+                --header="$hdr" -d "$dir" -o "$file" "$dl_url" >/dev/null 2>&1 && ok=1
+        else
+            timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M \
+                -d "$dir" -o "$file" "$dl_url" >/dev/null 2>&1 && ok=1
+        fi
+        # Verify file is real (not an error page)
+        if [ $ok -eq 1 ] && [ -f "$dir/$file" ]; then
+            local sz=$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)
+            if [ "$sz" -lt 1024 ] && ! [[ "$file" =~ \.(json|txt|jinja)$ ]]; then
+                ok=0; rm -f "$dir/$file"
             fi
         fi
     fi
 
-    # ── Strategy 2: curl without auth (public repos) ──
+    # ── Strategy 2: curl without auth ──
     if [ $ok -eq 0 ]; then
-        local dl_url="$url"
-        # Append ?download=true for HF resolve URLs (XET bypass)
-        if [ $is_hf -eq 1 ] && [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]]; then
-            dl_url="${dl_url}?download=true"
-        fi
         rm -f "$dir/$file"
         timeout 1800 curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
             -o "$dir/$file" "$dl_url" 2>/dev/null && ok=1
     fi
 
-    # ── Strategy 3: curl WITH auth (gated repos) ──
-    if [ $ok -eq 0 ] && [ $is_hf -eq 1 ] && [ -n "${HF_TOKEN:-}" ]; then
-        echo "  [↻] Retrying with HF auth..."
-        local dl_url="$url"
-        [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]] && dl_url="${dl_url}?download=true"
+    # ── Strategy 3: curl WITH auth ──
+    if [ $ok -eq 0 ] && [ -n "$hdr" ]; then
         rm -f "$dir/$file"
         timeout 1800 curl -fSL --retry 2 --retry-delay 5 \
-            -H "Authorization: Bearer $HF_TOKEN" \
-            -o "$dir/$file" "$dl_url" 2>/dev/null && ok=1
+            -H "$hdr" -o "$dir/$file" "$dl_url" 2>/dev/null && ok=1
     fi
 
-    # ── Strategy 4: aria2c (non-HF CDNs or last resort) ──
-    if [ $ok -eq 0 ] && command -v aria2c >/dev/null 2>&1; then
-        echo "  [↻] aria2c fallback..."
-        rm -f "$dir/$file"
-        timeout 1800 aria2c --console-log-level=error -c -x 4 -s 4 -k 1M \
-            -d "$dir" -o "$file" "$url" 2>&1 | tail -3 && ok=1
-    fi
-
-    # ── Strategy 5: wget ──
-    if [ $ok -eq 0 ] && command -v wget >/dev/null 2>&1; then
-        echo "  [↻] wget fallback..."
-        rm -f "$dir/$file"
-        timeout 1800 wget -q -O "$dir/$file" "$url" 2>/dev/null && ok=1
+    # ── Strategy 4 (HF only): hf_hub_download — handles XET natively ──
+    if [ $ok -eq 0 ] && [ $is_hf -eq 1 ]; then
+        local hf_repo hf_filepath
+        hf_repo=$(echo "$url" | sed -n 's|https://huggingface\.co/\([^/]*/[^/]*\)/resolve/.*|\1|p')
+        hf_filepath=$(echo "$url" | sed -n 's|https://huggingface\.co/[^/]*/[^/]*/resolve/[^/]*/\(.*\)|\1|p')
+        hf_filepath=$(echo "$hf_filepath" | sed 's/?.*//')
+        hf_filepath=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('$hf_filepath'))" 2>/dev/null || echo "$hf_filepath")
+        if [ -n "$hf_repo" ] && [ -n "$hf_filepath" ]; then
+            echo "  [hf-hub fallback] repo=$hf_repo file=$hf_filepath"
+            rm -f "$dir/$file"
+            python3 -c "
+import shutil, os
+from huggingface_hub import hf_hub_download
+p = hf_hub_download(repo_id='$hf_repo', filename='$hf_filepath', token=False)
+os.makedirs('$dir', exist_ok=True)
+shutil.copy2(p, '$dir/$file')
+print(f'  [hf-hub] OK: {os.path.getsize(\"$dir/$file\")} bytes')
+" 2>&1 && ok=1
+        fi
     fi
 
     if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
