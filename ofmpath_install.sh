@@ -1,7 +1,9 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════
-#  OFM PATH 智慧通路 — Inner Installer  (hardened v2 + LIPSYNC)
+#  OFM PATH 智慧通路 — Inner Installer  (hardened v3 + LIPSYNC)
 #  Fetched + decrypted by ofmpath_main.sh from Supabase bucket.
+#  v3: Fixed HuggingFace XET storage compatibility, download resilience,
+#      model path validation, vitpose integrity checks.
 # ═══════════════════════════════════════════════════════════════════════════
 
 # No `set -e` — we need to survive partial failures.
@@ -218,59 +220,103 @@ fi
 echo -e "\n━━━ Phase C: Download models ━━━"
 echo "[PROGRESS: 55]"
 echo "Found 57 models to verify"
- 
+
 _MODEL_IDX=0
 _MODEL_TOTAL=57
- 
+
+# ─── v3: Hardened download function ───
+# Fixes HuggingFace XET storage compat: curl-first strategy with explicit
+# redirect following.  aria2c multi-connection breaks on XET 302 redirects,
+# so we only use aria2c for non-HF URLs or as a last-resort fallback.
+# Also: try WITHOUT auth header first for public repos — a stale/bad token
+# can turn a 200 into a 403.
 _dl() {
     local dir="$1" file="$2" url="$3" label="${4:-asset}"
     _MODEL_IDX=$((_MODEL_IDX + 1))
     local pct=$(( 55 + (_MODEL_IDX * 35 / _MODEL_TOTAL) ))
     mkdir -p "$dir"
     echo "[STARTING] '${label}'"
+
+    # Cache check: file exists and is > 1 KB
     if [ -f "$dir/$file" ] && [ "$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)" -gt 1024 ]; then
         echo "  [ok] cached ($(stat -c%s "$dir/$file") bytes)"
         echo "[SUCCESS]"
         echo "[PROGRESS: ${pct}]"
         return
     fi
+    # Small config/text file cache check
     if [ -f "$dir/$file" ] && [ -s "$dir/$file" ] && [[ "$file" =~ \.(json|txt|jinja)$ ]]; then
         echo "  [ok] cached (small file)"
         echo "[SUCCESS]"
         echo "[PROGRESS: ${pct}]"
         return
     fi
- 
+
+    local is_hf=0
+    [[ "$url" =~ huggingface\.co ]] && is_hf=1
     local hdr=""
-    [[ "$url" =~ huggingface\.co ]] && hdr="Authorization: Bearer $HF_TOKEN"
- 
-    if command -v aria2c >/dev/null 2>&1; then
+    [ $is_hf -eq 1 ] && hdr="Authorization: Bearer $HF_TOKEN"
+
+    local ok=0
+
+    # ── Strategy 1: curl (primary — handles XET 302 redirects reliably) ──
+    if [ $ok -eq 0 ]; then
         if [ -n "$hdr" ]; then
-            timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M --header="$hdr" \
-                -d "$dir" -o "$file" "$url" >/dev/null 2>&1 \
-                || timeout 1800 curl -fsSL --retry 2 -H "$hdr" -o "$dir/$file" "$url" 2>/dev/null
+            timeout 1800 curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
+                -H "$hdr" -o "$dir/$file" "$url" 2>/dev/null && ok=1
         else
-            timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M \
-                -d "$dir" -o "$file" "$url" >/dev/null 2>&1 \
-                || timeout 1800 curl -fsSL --retry 2 -o "$dir/$file" "$url" 2>/dev/null
-        fi
-    else
-        if [ -n "$hdr" ]; then
-            timeout 1800 curl -fsSL --retry 2 -H "$hdr" -o "$dir/$file" "$url" 2>/dev/null
-        else
-            timeout 1800 curl -fsSL --retry 2 -o "$dir/$file" "$url" 2>/dev/null
+            timeout 1800 curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
+                -o "$dir/$file" "$url" 2>/dev/null && ok=1
         fi
     fi
- 
+
+    # ── Strategy 2: curl WITHOUT auth (HF public repos — bad token can 403) ──
+    if [ $ok -eq 0 ] && [ $is_hf -eq 1 ]; then
+        echo "  [↻] Retrying without auth header..."
+        rm -f "$dir/$file"
+        timeout 1800 curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
+            -o "$dir/$file" "$url" 2>/dev/null && ok=1
+    fi
+
+    # ── Strategy 3: aria2c single-connection fallback (no multi-conn for HF) ──
+    if [ $ok -eq 0 ] && command -v aria2c >/dev/null 2>&1; then
+        echo "  [↻] Retrying with aria2c (single-conn)..."
+        rm -f "$dir/$file"
+        local aria_conns=1
+        [ $is_hf -eq 0 ] && aria_conns=16   # multi-conn OK for non-HF CDNs
+        if [ -n "$hdr" ]; then
+            timeout 1800 aria2c --console-log-level=error -c \
+                -x "$aria_conns" -s "$aria_conns" -k 1M \
+                --header="$hdr" \
+                -d "$dir" -o "$file" "$url" 2>&1 | tail -3 && ok=1
+        else
+            timeout 1800 aria2c --console-log-level=error -c \
+                -x "$aria_conns" -s "$aria_conns" -k 1M \
+                -d "$dir" -o "$file" "$url" 2>&1 | tail -3 && ok=1
+        fi
+    fi
+
+    # ── Strategy 4: wget last resort ──
+    if [ $ok -eq 0 ] && command -v wget >/dev/null 2>&1; then
+        echo "  [↻] Last resort: wget..."
+        rm -f "$dir/$file"
+        if [ -n "$hdr" ]; then
+            timeout 1800 wget -q --header="$hdr" -O "$dir/$file" "$url" 2>/dev/null && ok=1
+        else
+            timeout 1800 wget -q -O "$dir/$file" "$url" 2>/dev/null && ok=1
+        fi
+    fi
+
     if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
         echo "  [dl] $(stat -c%s "$dir/$file") bytes"
         echo "[SUCCESS]"
     else
+        rm -f "$dir/$file"
         echo "[FAILED] $label"
     fi
     echo "[PROGRESS: ${pct}]"
 }
- 
+
 # DIFFUSION (3)
 _dl "$MODELS/diffusion_models" "z_image_turbo_bf16.safetensors" \
     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" "z_image_bf16"
@@ -278,7 +324,7 @@ _dl "$MODELS/diffusion_models" "z-image-turbo-fp8-e4m3fn.safetensors" \
     "https://huggingface.co/T5B/Z-Image-Turbo-FP8/resolve/main/z-image-turbo-fp8-e4m3fn.safetensors" "z_image_fp8"
 _dl "$MODELS/diffusion_models" "WanModel.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanModel.safetensors" "wan_diffusion"
- 
+
 # TEXT ENCODERS (3)
 _dl "$MODELS/text_encoders" "qwen_3_4b.safetensors" \
     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "qwen3_4b"
@@ -286,29 +332,29 @@ _dl "$MODELS/text_encoders" "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" \
     "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/refs%2Fpr%2F5/models/clip/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" "umt5xxl"
 _dl "$MODELS/text_encoders" "text_enc.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors" "text_enc"
- 
+
 # CLIP VISION (2)
 _dl "$MODELS/clip_vision" "klip_vision.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors" "clip_vision_k"
 _dl "$MODELS/clip_vision" "clip_vision_h.safetensors" \
     "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors" "clip_vision_h"
- 
+
 # VAE (2)
 _dl "$MODELS/vae" "ae.safetensors" \
     "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" "vae_ae"
 _dl "$MODELS/vae" "vae.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors" "vae_wan"
- 
+
 # CONTROLNET (2)
 _dl "$MODELS/controlnet" "Wan21_Uni3C_controlnet_fp16.safetensors" \
     "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors" "ctrl_wan"
 _dl "$MODELS/controlnet" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
     "https://huggingface.co/arhiteector/zimage/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors" "ctrl_zimg"
- 
+
 # CHECKPOINTS (1)
 _dl "$MODELS/checkpoints" "detect.safetensors" \
     "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" "ckpt_detect"
- 
+
 # LORAS (7)
 _dl "$MODELS/loras" "real.safetensors" \
     "https://huggingface.co/gazsuv/sudoku/resolve/main/real.safetensors" "lora_real"
@@ -324,7 +370,7 @@ _dl "$MODELS/loras" "WanPusa.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors" "lora_pusa"
 _dl "$MODELS/loras" "wan.reworked.safetensors" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors" "lora_wanrw"
- 
+
 # LIPSYNC-SPECIFIC MODELS (6)
 _dl "$MODELS/loras" "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" \
     "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" "lora_lightx2v"
@@ -346,15 +392,15 @@ _dl "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
     "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" "det_vitpose_data"
 _dl "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
     "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx" "det_vitpose_model"
- 
+
 # SAM (1)
 _dl "$MODELS/sams" "sam_vit_b_01ec64.pth" \
     "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/sams/sam_vit_b_01ec64.pth" "sam_vit_b"
- 
+
 # UPSCALER (1)
 _dl "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/4xUltrasharp_4xUltrasharpV10.pt" "upscaler"
- 
+
 # ULTRALYTICS BBOX (11)
 _dl "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
     "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" "bbox_face"
@@ -378,7 +424,7 @@ _dl "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
     "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" "bbox_hand"
 _dl "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
     "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt" "bbox_foot"
- 
+
 # QWEN3 VL (13)
 _QWEN_DIR="$MODELS/LLM/Qwen3-VL-4B-Instruct-heretic-7refusal"
 _QWEN_BASE="https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main"
@@ -395,34 +441,92 @@ _dl "$_QWEN_DIR" "tokenizer_config.json"        "$_QWEN_BASE/tokenizer_config.js
 _dl "$_QWEN_DIR" "vocab.json"                   "$_QWEN_BASE/vocab.json"                   "qwen_vocab"
 _dl "$_QWEN_DIR" "model-00001-of-00002.safetensors" "$_QWEN_BASE/model-00001-of-00002.safetensors" "qwen_shard1"
 _dl "$_QWEN_DIR" "model-00002-of-00002.safetensors" "$_QWEN_BASE/model-00002-of-00002.safetensors" "qwen_shard2"
- 
+
 # SEEDVR2 (2)
 _dl "$MODELS/SEEDVR2" "seedvr2_ema_7b_sharp_fp16.safetensors" \
     "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" "seedvr2_dit"
 _dl "$MODELS/SEEDVR2" "ema_vae_fp16.safetensors" \
     "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors" "seedvr2_vae"
- 
+
 echo "[OFM-INNER] ✓ Phase C model downloads complete"
- 
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE C.5 — MODEL PATH FIXES
+#  PHASE C.5 — MODEL PATH FIXES + CRITICAL VERIFICATION
 # ═══════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase C.5: Model path fixes ━━━"
- 
+echo -e "\n━━━ Phase C.5: Model path fixes + verification ━━━"
+
+# ─── v3: CRITICAL MODEL VERIFICATION + RETRY ───
+# These models are known to fail due to HF XET storage.
+# Verify they exist and retry with aggressive single-connection curl if missing.
+_verify_or_retry() {
+    local dir="$1" file="$2" url="$3" label="$4" min_bytes="${5:-10000}"
+    local path="$dir/$file"
+    if [ -f "$path" ] && [ "$(stat -c%s "$path" 2>/dev/null || echo 0)" -ge "$min_bytes" ]; then
+        return 0  # OK
+    fi
+    echo "[OFM-INNER] ⚠ MISSING/INCOMPLETE: $label ($path)"
+    echo "[OFM-INNER]   → Aggressive retry (3 attempts, no auth, single-conn)..."
+    mkdir -p "$dir"
+    rm -f "$path"
+    local attempt=0
+    while [ $attempt -lt 3 ]; do
+        attempt=$((attempt+1))
+        echo "  [retry $attempt/3] $label"
+        # No auth header — public repos don't need it, and stale tokens cause 403
+        timeout 600 curl -fSL --retry 2 --retry-delay 3 --retry-all-errors \
+            -o "$path" "$url" 2>&1 | tail -2
+        if [ -f "$path" ] && [ "$(stat -c%s "$path" 2>/dev/null || echo 0)" -ge "$min_bytes" ]; then
+            echo "  [✓] Recovered $label ($(stat -c%s "$path") bytes)"
+            return 0
+        fi
+        rm -f "$path"
+        sleep 3
+    done
+    echo "  [✗] FAILED to recover $label after 3 retries"
+    return 1
+}
+
+# ── Verify Bingsu/adetailer models (XET storage — known to break aria2c) ──
+_verify_or_retry "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" \
+    "face_yolov8s.pt (T2I bbox detector)"
+_verify_or_retry "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" \
+    "hand_yolov8s.pt (T2I bbox detector)"
+
+# ── Verify vitpose pair (ANIMATOR needs both .onnx + .bin in same dir) ──
+_verify_or_retry "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
+    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx" \
+    "vitpose_h_wholebody_model.onnx (ANIMATOR pose)" 1000000
+_verify_or_retry "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
+    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" \
+    "vitpose_h_wholebody_data.bin (ANIMATOR pose)" 1000000
+_verify_or_retry "$MODELS/detection" "yolov10m.onnx" \
+    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" \
+    "yolov10m.onnx (ANIMATOR detection)" 1000000
+
+# ── Verify foot bbox (AunyMoons — another potentially flaky source) ──
+_verify_or_retry "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
+    "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt" \
+    "foot-yolov8l.pt (bbox detector)"
+
+echo ""
+
 # Fix 1: Copy 4xUltrasharp to checkpoints (some workflows expect it there instead of upscale_models)
 mkdir -p "$MODELS/checkpoints"
 if [ -f "$MODELS/upscale_models/4xUltrasharp_4xUltrasharpV10.pt" ]; then
     cp "$MODELS/upscale_models/4xUltrasharp_4xUltrasharpV10.pt" "$MODELS/checkpoints/"
     echo "[OFM-INNER] ✓ Copied 4xUltrasharp to checkpoints"
 fi
- 
+
 # Fix 2: Copy Eyeful_v2 to checkpoints/bbox (workflow expects checkpoints/bbox NOT ultralytics/bbox)
 mkdir -p "$MODELS/checkpoints/bbox"
 if [ -f "$MODELS/ultralytics/bbox/Eyeful_v2-Paired.pt" ]; then
     cp "$MODELS/ultralytics/bbox/Eyeful_v2-Paired.pt" "$MODELS/checkpoints/bbox/"
     echo "[OFM-INNER] ✓ Copied Eyeful_v2 to checkpoints/bbox"
 fi
- 
+
 # Fix 3: Copy face/hand detectors to checkpoints/bbox (some workflows use different paths)
 if [ -f "$MODELS/ultralytics/bbox/face_yolov8s.pt" ]; then
     cp "$MODELS/ultralytics/bbox/face_yolov8s.pt" "$MODELS/checkpoints/bbox/" 2>/dev/null || true
@@ -449,7 +553,27 @@ for _f in assdetailer.pt female_breast-v4.2.pt vagina-v4.2.pt; do
     fi
 done
 echo "[OFM-INNER] ✓ Copied LIPSYNC bbox models to checkpoints/bbox"
- 
+
+# ── v3: Additional path mirrors for cross-workflow compat ──
+# Some Impact Pack nodes search ultralytics/bbox, others search checkpoints/bbox.
+# Ensure ALL bbox models exist in BOTH locations.
+echo "[OFM-INNER] Syncing bbox models across ultralytics/bbox ↔ checkpoints/bbox..."
+mkdir -p "$MODELS/ultralytics/bbox" "$MODELS/checkpoints/bbox"
+for _f in "$MODELS/ultralytics/bbox"/*.pt; do
+    [ -f "$_f" ] || continue
+    _bn=$(basename "$_f")
+    if [ ! -f "$MODELS/checkpoints/bbox/$_bn" ]; then
+        cp "$_f" "$MODELS/checkpoints/bbox/" 2>/dev/null || true
+    fi
+done
+for _f in "$MODELS/checkpoints/bbox"/*.pt; do
+    [ -f "$_f" ] || continue
+    _bn=$(basename "$_f")
+    if [ ! -f "$MODELS/ultralytics/bbox/$_bn" ]; then
+        cp "$_f" "$MODELS/ultralytics/bbox/" 2>/dev/null || true
+    fi
+done
+echo "[OFM-INNER] ✓ Bbox model sync complete"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -542,6 +666,32 @@ CUSTOM_NODE_COUNT=$(ls -1 "$CUSTOM_NODES_DIR" 2>/dev/null | wc -l)
 WF_COUNT=$(find "$WORKFLOWS_DIR" -maxdepth 1 -iname "*.json" 2>/dev/null | wc -l)
 echo "  Custom nodes: $CUSTOM_NODE_COUNT"
 echo "  Workflows in workflows dir: $WF_COUNT"
+
+# ── v3: Final critical model audit ──
+echo ""
+echo "━━━ Critical Model Audit ━━━"
+_AUDIT_FAIL=0
+_audit() {
+    local path="$1" label="$2"
+    if [ -f "$path" ] && [ -s "$path" ]; then
+        printf "  ✓ %-45s %s\n" "$label" "$(stat -c%s "$path") bytes"
+    else
+        printf "  ✗ %-45s MISSING\n" "$label"
+        _AUDIT_FAIL=$((_AUDIT_FAIL + 1))
+    fi
+}
+_audit "$MODELS/ultralytics/bbox/face_yolov8s.pt"      "face_yolov8s.pt [T2I]"
+_audit "$MODELS/ultralytics/bbox/hand_yolov8s.pt"      "hand_yolov8s.pt [T2I]"
+_audit "$MODELS/detection/vitpose_h_wholebody_model.onnx" "vitpose_h_wholebody_model.onnx [ANIMATOR]"
+_audit "$MODELS/detection/vitpose_h_wholebody_data.bin"   "vitpose_h_wholebody_data.bin [ANIMATOR]"
+_audit "$MODELS/detection/yolov10m.onnx"                  "yolov10m.onnx [ANIMATOR]"
+_audit "$MODELS/ultralytics/bbox/foot-yolov8l.pt"       "foot-yolov8l.pt [T2I]"
+
+if [ $_AUDIT_FAIL -gt 0 ]; then
+    echo "  ⚠ $_AUDIT_FAIL critical models still missing — check network/HF access"
+else
+    echo "  ✓ All critical models present"
+fi
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════════╗"
