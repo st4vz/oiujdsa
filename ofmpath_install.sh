@@ -221,329 +221,344 @@ echo -e "\n━━━ Phase C: Download models ━━━"
 echo "[PROGRESS: 55]"
 echo "Found 57 models to verify"
 
-# Ensure huggingface_hub is available (primary HF download method)
+# Ensure huggingface_hub is available (XET fallback)
 if ! python3 -c "from huggingface_hub import hf_hub_download" 2>/dev/null; then
     echo "[OFM-INNER] Installing huggingface_hub..."
     "$PIP" install -q huggingface_hub 2>/dev/null || true
 fi
-# Disable HF transfer for stability, disable symlinks
 export HF_HUB_ENABLE_HF_TRANSFER=0
 export HF_HUB_DISABLE_SYMLINKS_WARNING=1
 
-_MODEL_IDX=0
-_MODEL_TOTAL=57
+# ═══ PHASE C: BATCH PARALLEL MODEL DOWNLOADS ═══
+# aria2c batch input file → all 57 files at once, 8 concurrent streams,
+# 16 connections per file. Saturates the pipe on 32GB+ instances.
+# XET-broken files get a second pass via hf_hub_download.
 
-# v4: aria2c/curl primary for speed, hf_hub_download as XET fallback only.
-_dl() {
-    local dir="$1" file="$2" url="$3" label="${4:-asset}"
-    _MODEL_IDX=$((_MODEL_IDX + 1))
-    local pct=$(( 55 + (_MODEL_IDX * 35 / _MODEL_TOTAL) ))
+_MANIFEST=/tmp/ofmpath_dl_manifest.txt
+_FAILDIR=/tmp/ofmpath_failures
+rm -f "$_MANIFEST"
+mkdir -p "$_FAILDIR"
+
+_HF_HDR="Authorization: Bearer $HF_TOKEN"
+
+# ── Build aria2c input file ──
+# Format: URL\n  dir=X\n  out=Y\n  header=Z\n\n
+_add() {
+    local dir="$1" file="$2" url="$3"
     mkdir -p "$dir"
-    echo "[STARTING] '${label}'"
-
-    # Cache check: file exists and is > 1 KB
-    if [ -f "$dir/$file" ] && [ "$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)" -gt 1024 ]; then
-        echo "  [ok] cached ($(stat -c%s "$dir/$file") bytes)"
-        echo "[SUCCESS]"
-        echo "[PROGRESS: ${pct}]"
-        return
-    fi
-    # Small config/text file cache check
-    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ] && [[ "$file" =~ \.(json|txt|jinja)$ ]]; then
-        echo "  [ok] cached (small file)"
-        echo "[SUCCESS]"
-        echo "[PROGRESS: ${pct}]"
-        return
-    fi
-
-    local is_hf=0
-    [[ "$url" =~ huggingface\.co ]] && is_hf=1
-    local ok=0
-    local dl_url="$url"
-    # Append ?download=true for HF resolve URLs (XET LFS bypass)
-    if [ $is_hf -eq 1 ] && [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]]; then
-        dl_url="${dl_url}?download=true"
-    fi
-    local hdr=""
-    [ $is_hf -eq 1 ] && [ -n "${HF_TOKEN:-}" ] && hdr="Authorization: Bearer $HF_TOKEN"
-
-    # ── Strategy 1: aria2c multi-connection (FAST) ──
-    if [ $ok -eq 0 ] && command -v aria2c >/dev/null 2>&1; then
-        rm -f "$dir/$file"
-        if [ -n "$hdr" ]; then
-            timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M \
-                --header="$hdr" -d "$dir" -o "$file" "$dl_url" >/dev/null 2>&1 && ok=1
-        else
-            timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M \
-                -d "$dir" -o "$file" "$dl_url" >/dev/null 2>&1 && ok=1
+    # Skip if already cached AND valid
+    if [ -f "$dir/$file" ]; then
+        if [[ "$file" =~ \.(json|txt|jinja)$ ]] && [ -s "$dir/$file" ]; then
+            return
         fi
-        # Verify file is real (not an error page)
-        if [ $ok -eq 1 ] && [ -f "$dir/$file" ]; then
-            local sz=$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)
-            if [ "$sz" -lt 1024 ] && ! [[ "$file" =~ \.(json|txt|jinja)$ ]]; then
-                ok=0; rm -f "$dir/$file"
+        local sz=$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)
+        if [ "$sz" -gt 10000 ]; then
+            local hd=$(head -c 16 "$dir/$file" 2>/dev/null | tr -d '\0')
+            if ! echo "$hd" | grep -qiE '<!doctype|<html|{"error'; then
+                return  # Valid cached file
             fi
+            rm -f "$dir/$file"  # HTML error page — re-download
         fi
     fi
-
-    # ── Strategy 2: curl without auth ──
-    if [ $ok -eq 0 ]; then
-        rm -f "$dir/$file"
-        timeout 1800 curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
-            -o "$dir/$file" "$dl_url" 2>/dev/null && ok=1
+    local dl_url="$url"
+    [[ "$dl_url" =~ huggingface\.co ]] && [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]] && dl_url="${dl_url}?download=true"
+    echo "$dl_url" >> "$_MANIFEST"
+    echo "  dir=$dir" >> "$_MANIFEST"
+    echo "  out=$file" >> "$_MANIFEST"
+    if [[ "$url" =~ huggingface\.co ]] && [ -n "${HF_TOKEN:-}" ]; then
+        echo "  header=$_HF_HDR" >> "$_MANIFEST"
     fi
-
-    # ── Strategy 3: curl WITH auth ──
-    if [ $ok -eq 0 ] && [ -n "$hdr" ]; then
-        rm -f "$dir/$file"
-        timeout 1800 curl -fSL --retry 2 --retry-delay 5 \
-            -H "$hdr" -o "$dir/$file" "$dl_url" 2>/dev/null && ok=1
-    fi
-
-    # ── Strategy 4 (HF only): hf_hub_download — handles XET natively ──
-    if [ $ok -eq 0 ] && [ $is_hf -eq 1 ]; then
-        local hf_repo hf_filepath
-        hf_repo=$(echo "$url" | sed -n 's|https://huggingface\.co/\([^/]*/[^/]*\)/resolve/.*|\1|p')
-        hf_filepath=$(echo "$url" | sed -n 's|https://huggingface\.co/[^/]*/[^/]*/resolve/[^/]*/\(.*\)|\1|p')
-        hf_filepath=$(echo "$hf_filepath" | sed 's/?.*//')
-        hf_filepath=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('$hf_filepath'))" 2>/dev/null || echo "$hf_filepath")
-        if [ -n "$hf_repo" ] && [ -n "$hf_filepath" ]; then
-            echo "  [hf-hub fallback] repo=$hf_repo file=$hf_filepath"
-            rm -f "$dir/$file"
-            python3 -c "
-import shutil, os
-from huggingface_hub import hf_hub_download
-p = hf_hub_download(repo_id='$hf_repo', filename='$hf_filepath', token=False)
-os.makedirs('$dir', exist_ok=True)
-shutil.copy2(p, '$dir/$file')
-print(f'  [hf-hub] OK: {os.path.getsize(\"$dir/$file\")} bytes')
-" 2>&1 && ok=1
-        fi
-    fi
-
-    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
-        echo "  [dl] $(stat -c%s "$dir/$file") bytes"
-        echo "[SUCCESS]"
-    else
-        rm -f "$dir/$file"
-        echo "[FAILED] $label"
-    fi
-    echo "[PROGRESS: ${pct}]"
+    echo "" >> "$_MANIFEST"
 }
 
 # DIFFUSION (3)
-_dl "$MODELS/diffusion_models" "z_image_turbo_bf16.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" "z_image_bf16"
-_dl "$MODELS/diffusion_models" "z-image-turbo-fp8-e4m3fn.safetensors" \
-    "https://huggingface.co/T5B/Z-Image-Turbo-FP8/resolve/main/z-image-turbo-fp8-e4m3fn.safetensors" "z_image_fp8"
-_dl "$MODELS/diffusion_models" "WanModel.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanModel.safetensors" "wan_diffusion"
+_add "$MODELS/diffusion_models" "z_image_turbo_bf16.safetensors" \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+_add "$MODELS/diffusion_models" "z-image-turbo-fp8-e4m3fn.safetensors" \
+    "https://huggingface.co/T5B/Z-Image-Turbo-FP8/resolve/main/z-image-turbo-fp8-e4m3fn.safetensors"
+_add "$MODELS/diffusion_models" "WanModel.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanModel.safetensors"
 
 # TEXT ENCODERS (3)
-_dl "$MODELS/text_encoders" "qwen_3_4b.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "qwen3_4b"
-_dl "$MODELS/text_encoders" "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" \
-    "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/refs%2Fpr%2F5/models/clip/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" "umt5xxl"
-_dl "$MODELS/text_encoders" "text_enc.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors" "text_enc"
+_add "$MODELS/text_encoders" "qwen_3_4b.safetensors" \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
+_add "$MODELS/text_encoders" "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" \
+    "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/refs%2Fpr%2F5/models/clip/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors"
+_add "$MODELS/text_encoders" "text_enc.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors"
 
 # CLIP VISION (2)
-_dl "$MODELS/clip_vision" "klip_vision.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors" "clip_vision_k"
-_dl "$MODELS/clip_vision" "clip_vision_h.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors" "clip_vision_h"
+_add "$MODELS/clip_vision" "klip_vision.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors"
+_add "$MODELS/clip_vision" "clip_vision_h.safetensors" \
+    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
 
 # VAE (2)
-_dl "$MODELS/vae" "ae.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" "vae_ae"
-_dl "$MODELS/vae" "vae.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors" "vae_wan"
+_add "$MODELS/vae" "ae.safetensors" \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors"
+_add "$MODELS/vae" "vae.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors"
 
 # CONTROLNET (2)
-_dl "$MODELS/controlnet" "Wan21_Uni3C_controlnet_fp16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors" "ctrl_wan"
-_dl "$MODELS/controlnet" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
-    "https://huggingface.co/arhiteector/zimage/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors" "ctrl_zimg"
+_add "$MODELS/controlnet" "Wan21_Uni3C_controlnet_fp16.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
+_add "$MODELS/controlnet" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
+    "https://huggingface.co/arhiteector/zimage/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
 
 # CHECKPOINTS (1)
-_dl "$MODELS/checkpoints" "detect.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" "ckpt_detect"
+_add "$MODELS/checkpoints" "detect.safetensors" \
+    "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors"
 
 # LORAS (7)
-_dl "$MODELS/loras" "real.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/real.safetensors" "lora_real"
-_dl "$MODELS/loras" "XXX.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/XXX.safetensors" "lora_xxx"
-_dl "$MODELS/loras" "gpu.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/gpu.safetensors" "lora_gpu"
-_dl "$MODELS/loras" "WanFun.reworked.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanFun.reworked.safetensors" "lora_wanfun"
-_dl "$MODELS/loras" "light.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/light.safetensors" "lora_light"
-_dl "$MODELS/loras" "WanPusa.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors" "lora_pusa"
-_dl "$MODELS/loras" "wan.reworked.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors" "lora_wanrw"
+_add "$MODELS/loras" "real.safetensors" \
+    "https://huggingface.co/gazsuv/sudoku/resolve/main/real.safetensors"
+_add "$MODELS/loras" "XXX.safetensors" \
+    "https://huggingface.co/gazsuv/sudoku/resolve/main/XXX.safetensors"
+_add "$MODELS/loras" "gpu.safetensors" \
+    "https://huggingface.co/gazsuv/sudoku/resolve/main/gpu.safetensors"
+_add "$MODELS/loras" "WanFun.reworked.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanFun.reworked.safetensors"
+_add "$MODELS/loras" "light.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/light.safetensors"
+_add "$MODELS/loras" "WanPusa.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors"
+_add "$MODELS/loras" "wan.reworked.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors"
 
-# LIPSYNC-SPECIFIC MODELS (6)
-_dl "$MODELS/loras" "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" "lora_lightx2v"
-_dl "$MODELS/loras" "Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" \
-    "https://huggingface.co/Kijai/Wan2.1-Fun-Reward-LoRAs-comfy/resolve/main/Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" "lora_funreward"
-_dl "$MODELS/text_encoders" "umt5-xxl-enc-fp8_e4m3fn.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors" "umt5_kj_fp8"
-_dl "$MODELS/vae" "Wan2_1_VAE_bf16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors" "vae_wan_bf16"
-_dl "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" "wan_i2v_480p"
-_dl "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" "infinitetalk"
+# LIPSYNC-SPECIFIC (6)
+_add "$MODELS/loras" "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors"
+_add "$MODELS/loras" "Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" \
+    "https://huggingface.co/Kijai/Wan2.1-Fun-Reward-LoRAs-comfy/resolve/main/Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors"
+_add "$MODELS/text_encoders" "umt5-xxl-enc-fp8_e4m3fn.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors"
+_add "$MODELS/vae" "Wan2_1_VAE_bf16.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors"
+_add "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors"
+_add "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors"
 
 # DETECTION (3)
-_dl "$MODELS/detection" "yolov10m.onnx" \
-    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" "det_yolo"
-_dl "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" "det_vitpose_data"
-_dl "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx" "det_vitpose_model"
+_add "$MODELS/detection" "yolov10m.onnx" \
+    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx"
+_add "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
+    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin"
+_add "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
+    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx"
 
 # SAM (1)
-_dl "$MODELS/sams" "sam_vit_b_01ec64.pth" \
-    "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/sams/sam_vit_b_01ec64.pth" "sam_vit_b"
+_add "$MODELS/sams" "sam_vit_b_01ec64.pth" \
+    "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/sams/sam_vit_b_01ec64.pth"
 
 # UPSCALER (1)
-_dl "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/4xUltrasharp_4xUltrasharpV10.pt" "upscaler"
+_add "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/4xUltrasharp_4xUltrasharpV10.pt"
 
 # ULTRALYTICS BBOX (11)
-_dl "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
-    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" "bbox_face"
-_dl "$MODELS/ultralytics/bbox" "femaleBodyDetection_yolo26.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/femaleBodyDetection_yolo26.pt" "bbox_body"
-_dl "$MODELS/ultralytics/bbox" "female_breast-v4.2.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/female_breast-v4.2.pt" "bbox_breast"
-_dl "$MODELS/ultralytics/bbox" "nipples_yolov8s.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/nipples_yolov8s.pt" "bbox_nipples"
-_dl "$MODELS/ultralytics/bbox" "vagina-v4.2.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/vagina-v4.2.pt" "bbox_vagina"
-_dl "$MODELS/ultralytics/bbox" "assdetailer.pt" \
-    "https://huggingface.co/gazsuv/xmode/resolve/main/assdetailer.pt" "bbox_ass"
-_dl "$MODELS/ultralytics/bbox" "Eyeful_v2-Paired.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyeful_v2-Paired.pt" "bbox_eyes_v2"
-_dl "$MODELS/ultralytics/bbox" "Eyes.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyes.pt" "bbox_eyes"
-_dl "$MODELS/ultralytics/bbox" "FacesV1.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/FacesV1.pt" "bbox_faces"
-_dl "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
-    "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" "bbox_hand"
-_dl "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
-    "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt" "bbox_foot"
+_add "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt"
+_add "$MODELS/ultralytics/bbox" "femaleBodyDetection_yolo26.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/femaleBodyDetection_yolo26.pt"
+_add "$MODELS/ultralytics/bbox" "female_breast-v4.2.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/female_breast-v4.2.pt"
+_add "$MODELS/ultralytics/bbox" "nipples_yolov8s.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/nipples_yolov8s.pt"
+_add "$MODELS/ultralytics/bbox" "vagina-v4.2.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/vagina-v4.2.pt"
+_add "$MODELS/ultralytics/bbox" "assdetailer.pt" \
+    "https://huggingface.co/gazsuv/xmode/resolve/main/assdetailer.pt"
+_add "$MODELS/ultralytics/bbox" "Eyeful_v2-Paired.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyeful_v2-Paired.pt"
+_add "$MODELS/ultralytics/bbox" "Eyes.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyes.pt"
+_add "$MODELS/ultralytics/bbox" "FacesV1.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/FacesV1.pt"
+_add "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt"
+_add "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
+    "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt"
 
 # QWEN3 VL (13)
 _QWEN_DIR="$MODELS/LLM/Qwen3-VL-4B-Instruct-heretic-7refusal"
 _QWEN_BASE="https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main"
-_dl "$_QWEN_DIR" "added_tokens.json"            "$_QWEN_BASE/added_tokens.json"            "qwen_added"
-_dl "$_QWEN_DIR" "chat_template.jinja"          "$_QWEN_BASE/chat_template.jinja"          "qwen_chat"
-_dl "$_QWEN_DIR" "config.json"                  "$_QWEN_BASE/config.json"                  "qwen_config"
-_dl "$_QWEN_DIR" "generation_config.json"       "$_QWEN_BASE/generation_config.json"       "qwen_gen"
-_dl "$_QWEN_DIR" "merges.txt"                   "$_QWEN_BASE/merges.txt"                   "qwen_merges"
-_dl "$_QWEN_DIR" "model.safetensors.index.json" "$_QWEN_BASE/model.safetensors.index.json" "qwen_idx"
-_dl "$_QWEN_DIR" "preprocessor_config.json"     "$_QWEN_BASE/preprocessor_config.json"     "qwen_pre"
-_dl "$_QWEN_DIR" "special_tokens_map.json"      "$_QWEN_BASE/special_tokens_map.json"      "qwen_spc"
-_dl "$_QWEN_DIR" "tokenizer.json"               "$_QWEN_BASE/tokenizer.json"               "qwen_tok"
-_dl "$_QWEN_DIR" "tokenizer_config.json"        "$_QWEN_BASE/tokenizer_config.json"        "qwen_tokcfg"
-_dl "$_QWEN_DIR" "vocab.json"                   "$_QWEN_BASE/vocab.json"                   "qwen_vocab"
-_dl "$_QWEN_DIR" "model-00001-of-00002.safetensors" "$_QWEN_BASE/model-00001-of-00002.safetensors" "qwen_shard1"
-_dl "$_QWEN_DIR" "model-00002-of-00002.safetensors" "$_QWEN_BASE/model-00002-of-00002.safetensors" "qwen_shard2"
+_add "$_QWEN_DIR" "added_tokens.json"            "$_QWEN_BASE/added_tokens.json"
+_add "$_QWEN_DIR" "chat_template.jinja"          "$_QWEN_BASE/chat_template.jinja"
+_add "$_QWEN_DIR" "config.json"                  "$_QWEN_BASE/config.json"
+_add "$_QWEN_DIR" "generation_config.json"       "$_QWEN_BASE/generation_config.json"
+_add "$_QWEN_DIR" "merges.txt"                   "$_QWEN_BASE/merges.txt"
+_add "$_QWEN_DIR" "model.safetensors.index.json" "$_QWEN_BASE/model.safetensors.index.json"
+_add "$_QWEN_DIR" "preprocessor_config.json"     "$_QWEN_BASE/preprocessor_config.json"
+_add "$_QWEN_DIR" "special_tokens_map.json"      "$_QWEN_BASE/special_tokens_map.json"
+_add "$_QWEN_DIR" "tokenizer.json"               "$_QWEN_BASE/tokenizer.json"
+_add "$_QWEN_DIR" "tokenizer_config.json"        "$_QWEN_BASE/tokenizer_config.json"
+_add "$_QWEN_DIR" "vocab.json"                   "$_QWEN_BASE/vocab.json"
+_add "$_QWEN_DIR" "model-00001-of-00002.safetensors" "$_QWEN_BASE/model-00001-of-00002.safetensors"
+_add "$_QWEN_DIR" "model-00002-of-00002.safetensors" "$_QWEN_BASE/model-00002-of-00002.safetensors"
 
 # SEEDVR2 (2)
-_dl "$MODELS/SEEDVR2" "seedvr2_ema_7b_sharp_fp16.safetensors" \
-    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" "seedvr2_dit"
-_dl "$MODELS/SEEDVR2" "ema_vae_fp16.safetensors" \
-    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors" "seedvr2_vae"
+_add "$MODELS/SEEDVR2" "seedvr2_ema_7b_sharp_fp16.safetensors" \
+    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors"
+_add "$MODELS/SEEDVR2" "ema_vae_fp16.safetensors" \
+    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors"
 
-echo "[OFM-INNER] ✓ Phase C model downloads complete"
+# ── Run aria2c batch ──
+_NEED_DL=$(grep -c '^http' "$_MANIFEST" 2>/dev/null || echo 0)
+if [ "$_NEED_DL" -gt 0 ]; then
+    echo "[OFM-INNER] Downloading $_NEED_DL models via aria2c (8 concurrent × 16 conn each)..."
+    timeout 3600 aria2c \
+        --input-file="$_MANIFEST" \
+        --max-concurrent-downloads=8 \
+        --split=16 \
+        --max-connection-per-server=16 \
+        --min-split-size=1M \
+        --continue=true \
+        --auto-file-renaming=false \
+        --allow-overwrite=true \
+        --console-log-level=warn \
+        --summary-interval=10 \
+        --download-result=full \
+        2>&1 | tail -30
+    echo "[PROGRESS: 80]"
+else
+    echo "[OFM-INNER] All models cached, skipping downloads"
+    echo "[PROGRESS: 80]"
+fi
+rm -f "$_MANIFEST"
+
+# ── Post-download validation: purge HTML error pages ──
+# aria2c silently "succeeds" when XET repos return error pages.
+# These are valid HTTP 200 responses containing HTML, saved as .safetensors/.pt/.onnx/.bin.
+# Detect and delete them so hf_fallback can re-download properly.
+echo "[OFM-INNER] Validating downloaded files..."
+_PURGED=0
+while IFS= read -r -d '' _f; do
+    # Skip small config files
+    [[ "$_f" =~ \.(json|txt|jinja)$ ]] && continue
+    # Check first bytes for HTML content
+    _head=$(head -c 32 "$_f" 2>/dev/null | tr -d '\0')
+    if echo "$_head" | grep -qiE '<!doctype|<html|<!--|<\?xml|{"error|Access denied|404|302 Found'; then
+        echo "  [purge] $(basename "$_f") — HTML error page ($(stat -c%s "$_f") bytes)"
+        rm -f "$_f"
+        _PURGED=$((_PURGED + 1))
+        continue
+    fi
+    # Binary model files should be > 10KB minimum (error pages are typically 1-8KB)
+    if [[ "$_f" =~ \.(safetensors|pt|pth|onnx|bin)$ ]]; then
+        _sz=$(stat -c%s "$_f" 2>/dev/null || echo 0)
+        # .onnx can be small (~80KB) but never < 10KB for real models
+        if [ "$_sz" -lt 10000 ]; then
+            echo "  [purge] $(basename "$_f") — suspiciously small (${_sz} bytes)"
+            rm -f "$_f"
+            _PURGED=$((_PURGED + 1))
+        fi
+    fi
+done < <(find "$MODELS" -maxdepth 4 -type f \( -name "*.safetensors" -o -name "*.pt" -o -name "*.pth" -o -name "*.onnx" -o -name "*.bin" \) -print0 2>/dev/null)
+echo "[OFM-INNER] Purged $_PURGED invalid files"
+
+# ── Second pass: hf_hub_download for anything aria2c missed (XET repos) ──
+echo "[OFM-INNER] Verifying all models + XET fallback..."
+_hf_fallback() {
+    local dir="$1" file="$2" repo="$3" rpath="$4"
+    if [ -f "$dir/$file" ]; then
+        local sz=$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)
+        # Small config files: just check exists + non-empty
+        if [[ "$file" =~ \.(json|txt|jinja)$ ]] && [ "$sz" -gt 0 ]; then
+            return 0
+        fi
+        # Binary model files: must be > 10KB AND not an HTML error page
+        if [ "$sz" -gt 10000 ]; then
+            local hd=$(head -c 32 "$dir/$file" 2>/dev/null | tr -d '\0')
+            if ! echo "$hd" | grep -qiE '<!doctype|<html|{"error'; then
+                return 0
+            fi
+            echo "  [!] $file is an HTML error page, re-downloading..."
+            rm -f "$dir/$file"
+        else
+            [ "$sz" -gt 0 ] && rm -f "$dir/$file"
+        fi
+    fi
+    echo "  [hf-hub] $file ← $repo/$rpath"
+    mkdir -p "$dir"
+    python3 -c "
+import shutil, os
+from huggingface_hub import hf_hub_download
+p = hf_hub_download(repo_id='$repo', filename='$rpath', token=False)
+os.makedirs('$dir', exist_ok=True)
+shutil.copy2(p, '$dir/$file')
+print(f'    OK: {os.path.getsize(\"$dir/$file\")} bytes')
+" 2>&1 || echo "  [✗] FAILED: $file"
+}
+
+# Only the known-problematic files need explicit fallback entries.
+# If any other model also failed, it'll be caught by the audit.
+_hf_fallback "$MODELS/ultralytics/bbox" "face_yolov8s.pt"   "Bingsu/adetailer" "face_yolov8s.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "hand_yolov8s.pt"   "Bingsu/adetailer" "hand_yolov8s.pt"
+_hf_fallback "$MODELS/detection" "vitpose_h_wholebody_model.onnx" "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_model.onnx"
+_hf_fallback "$MODELS/detection" "vitpose_h_wholebody_data.bin"   "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_data.bin"
+_hf_fallback "$MODELS/detection" "yolov10m.onnx" "Wan-AI/Wan2.2-Animate-14B" "process_checkpoint/det/yolov10m.onnx"
+_hf_fallback "$MODELS/ultralytics/bbox" "foot-yolov8l.pt"   "AunyMoons/loras-pack" "foot-yolov8l.pt"
+_hf_fallback "$MODELS/sams" "sam_vit_b_01ec64.pth" "datasets/Gourieff/ReActor" "models/sams/sam_vit_b_01ec64.pth"
+
+# Full sweep: any HF model still missing gets hf_hub_download
+_hf_fallback "$MODELS/diffusion_models" "z_image_turbo_bf16.safetensors" "Comfy-Org/z_image_turbo" "split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+_hf_fallback "$MODELS/diffusion_models" "z-image-turbo-fp8-e4m3fn.safetensors" "T5B/Z-Image-Turbo-FP8" "z-image-turbo-fp8-e4m3fn.safetensors"
+_hf_fallback "$MODELS/diffusion_models" "WanModel.safetensors" "wdsfdsdf/OFMHUB" "WanModel.safetensors"
+_hf_fallback "$MODELS/text_encoders" "qwen_3_4b.safetensors" "Comfy-Org/z_image_turbo" "split_files/text_encoders/qwen_3_4b.safetensors"
+_hf_fallback "$MODELS/text_encoders" "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" "UmeAiRT/ComfyUI-Auto_installer" "models/clip/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors"
+_hf_fallback "$MODELS/text_encoders" "text_enc.safetensors" "wdsfdsdf/OFMHUB" "text_enc.safetensors"
+_hf_fallback "$MODELS/clip_vision" "klip_vision.safetensors" "wdsfdsdf/OFMHUB" "klip_vision.safetensors"
+_hf_fallback "$MODELS/clip_vision" "clip_vision_h.safetensors" "Comfy-Org/Wan_2.1_ComfyUI_repackaged" "split_files/clip_vision/clip_vision_h.safetensors"
+_hf_fallback "$MODELS/vae" "ae.safetensors" "Comfy-Org/z_image_turbo" "split_files/vae/ae.safetensors"
+_hf_fallback "$MODELS/vae" "vae.safetensors" "wdsfdsdf/OFMHUB" "vae.safetensors"
+_hf_fallback "$MODELS/controlnet" "Wan21_Uni3C_controlnet_fp16.safetensors" "Kijai/WanVideo_comfy" "Wan21_Uni3C_controlnet_fp16.safetensors"
+_hf_fallback "$MODELS/controlnet" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors" "arhiteector/zimage" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
+_hf_fallback "$MODELS/checkpoints" "detect.safetensors" "gazsuv/sudoku" "detect.safetensors"
+_hf_fallback "$MODELS/loras" "real.safetensors" "gazsuv/sudoku" "real.safetensors"
+_hf_fallback "$MODELS/loras" "XXX.safetensors" "gazsuv/sudoku" "XXX.safetensors"
+_hf_fallback "$MODELS/loras" "gpu.safetensors" "gazsuv/sudoku" "gpu.safetensors"
+_hf_fallback "$MODELS/loras" "WanFun.reworked.safetensors" "wdsfdsdf/OFMHUB" "WanFun.reworked.safetensors"
+_hf_fallback "$MODELS/loras" "light.safetensors" "wdsfdsdf/OFMHUB" "light.safetensors"
+_hf_fallback "$MODELS/loras" "WanPusa.safetensors" "wdsfdsdf/OFMHUB" "WanPusa.safetensors"
+_hf_fallback "$MODELS/loras" "wan.reworked.safetensors" "wdsfdsdf/OFMHUB" "wan.reworked.safetensors"
+_hf_fallback "$MODELS/loras" "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" "Kijai/WanVideo_comfy" "Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors"
+_hf_fallback "$MODELS/loras" "Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" "Kijai/Wan2.1-Fun-Reward-LoRAs-comfy" "Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors"
+_hf_fallback "$MODELS/text_encoders" "umt5-xxl-enc-fp8_e4m3fn.safetensors" "Kijai/WanVideo_comfy" "umt5-xxl-enc-fp8_e4m3fn.safetensors"
+_hf_fallback "$MODELS/vae" "Wan2_1_VAE_bf16.safetensors" "Kijai/WanVideo_comfy" "Wan2_1_VAE_bf16.safetensors"
+_hf_fallback "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" "Kijai/WanVideo_comfy_fp8_scaled" "I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors"
+_hf_fallback "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" "Kijai/WanVideo_comfy_fp8_scaled" "InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors"
+_hf_fallback "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" "gazsuv/pussydetectorv4" "4xUltrasharp_4xUltrasharpV10.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "femaleBodyDetection_yolo26.pt" "gazsuv/pussydetectorv4" "femaleBodyDetection_yolo26.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "female_breast-v4.2.pt" "gazsuv/pussydetectorv4" "female_breast-v4.2.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "nipples_yolov8s.pt" "gazsuv/pussydetectorv4" "nipples_yolov8s.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "vagina-v4.2.pt" "gazsuv/pussydetectorv4" "vagina-v4.2.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "assdetailer.pt" "gazsuv/xmode" "assdetailer.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "Eyeful_v2-Paired.pt" "gazsuv/pussydetectorv4" "Eyeful_v2-Paired.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "Eyes.pt" "gazsuv/pussydetectorv4" "Eyes.pt"
+_hf_fallback "$MODELS/ultralytics/bbox" "FacesV1.pt" "gazsuv/pussydetectorv4" "FacesV1.pt"
+_hf_fallback "$_QWEN_DIR" "added_tokens.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "added_tokens.json"
+_hf_fallback "$_QWEN_DIR" "chat_template.jinja" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "chat_template.jinja"
+_hf_fallback "$_QWEN_DIR" "config.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "config.json"
+_hf_fallback "$_QWEN_DIR" "generation_config.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "generation_config.json"
+_hf_fallback "$_QWEN_DIR" "merges.txt" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "merges.txt"
+_hf_fallback "$_QWEN_DIR" "model.safetensors.index.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "model.safetensors.index.json"
+_hf_fallback "$_QWEN_DIR" "preprocessor_config.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "preprocessor_config.json"
+_hf_fallback "$_QWEN_DIR" "special_tokens_map.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "special_tokens_map.json"
+_hf_fallback "$_QWEN_DIR" "tokenizer.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "tokenizer.json"
+_hf_fallback "$_QWEN_DIR" "tokenizer_config.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "tokenizer_config.json"
+_hf_fallback "$_QWEN_DIR" "vocab.json" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "vocab.json"
+_hf_fallback "$_QWEN_DIR" "model-00001-of-00002.safetensors" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "model-00001-of-00002.safetensors"
+_hf_fallback "$_QWEN_DIR" "model-00002-of-00002.safetensors" "svjack/Qwen3-VL-4B-Instruct-heretic-7refusal" "model-00002-of-00002.safetensors"
+_hf_fallback "$MODELS/SEEDVR2" "seedvr2_ema_7b_sharp_fp16.safetensors" "numz/SeedVR2_comfyUI" "seedvr2_ema_7b_sharp_fp16.safetensors"
+_hf_fallback "$MODELS/SEEDVR2" "ema_vae_fp16.safetensors" "numz/SeedVR2_comfyUI" "ema_vae_fp16.safetensors"
+
+echo "[PROGRESS: 88]"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  PHASE C.5 — MODEL PATH FIXES + CRITICAL VERIFICATION
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C.5: Model path fixes + verification ━━━"
-
-# ─── v3: CRITICAL MODEL VERIFICATION + RETRY ───
-# These models are known to fail due to HF XET storage.
-# Verify they exist and retry with aggressive single-connection curl if missing.
-_verify_or_retry() {
-    local dir="$1" file="$2" url="$3" label="$4" min_bytes="${5:-10000}"
-    local path="$dir/$file"
-    if [ -f "$path" ] && [ "$(stat -c%s "$path" 2>/dev/null || echo 0)" -ge "$min_bytes" ]; then
-        return 0  # OK
-    fi
-    echo "[OFM-INNER] ⚠ MISSING/INCOMPLETE: $label ($path)"
-    mkdir -p "$dir"
-    rm -f "$path"
-
-    # Try 1: huggingface_hub (handles XET natively)
-    if [[ "$url" =~ huggingface\.co ]]; then
-        local hf_repo hf_fp
-        hf_repo=$(echo "$url" | sed -n 's|https://huggingface\.co/\([^/]*/[^/]*\)/resolve/.*|\1|p')
-        hf_fp=$(echo "$url" | sed -n 's|https://huggingface\.co/[^/]*/[^/]*/resolve/[^/]*/\(.*\)|\1|p')
-        hf_fp=$(echo "$hf_fp" | sed 's/?.*//')
-        hf_fp=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('$hf_fp'))" 2>/dev/null || echo "$hf_fp")
-        if [ -n "$hf_repo" ] && [ -n "$hf_fp" ]; then
-            echo "  [hf-hub recovery] repo=$hf_repo file=$hf_fp"
-            python3 -c "
-import shutil, os
-from huggingface_hub import hf_hub_download
-p = hf_hub_download(repo_id='$hf_repo', filename='$hf_fp', token=False)
-os.makedirs('$dir', exist_ok=True)
-shutil.copy2(p, '$dir/$file')
-print(f'  [✓] hf-hub: {os.path.getsize(\"$dir/$file\")} bytes')
-" 2>&1 && [ -f "$path" ] && [ "$(stat -c%s "$path" 2>/dev/null || echo 0)" -ge "$min_bytes" ] && return 0
-        fi
-    fi
-
-    # Try 2: curl with ?download=true, no auth
-    local dl_url="$url"
-    [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]] && dl_url="${dl_url}?download=true"
-    for attempt in 1 2 3; do
-        echo "  [curl retry $attempt/3] $label"
-        rm -f "$path"
-        timeout 600 curl -fSL --retry 2 --retry-delay 3 -o "$path" "$dl_url" 2>&1 | tail -2
-        if [ -f "$path" ] && [ "$(stat -c%s "$path" 2>/dev/null || echo 0)" -ge "$min_bytes" ]; then
-            echo "  [✓] curl recovered ($(stat -c%s "$path") bytes)"
-            return 0
-        fi
-        sleep 3
-    done
-
-    echo "  [✗] FAILED to recover $label"
-    return 1
-}
-
-# ── Verify Bingsu/adetailer models (XET storage — known to break aria2c) ──
-_verify_or_retry "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
-    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" \
-    "face_yolov8s.pt (T2I bbox detector)"
-_verify_or_retry "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
-    "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" \
-    "hand_yolov8s.pt (T2I bbox detector)"
-
-# ── Verify vitpose pair (ANIMATOR needs both .onnx + .bin in same dir) ──
-_verify_or_retry "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx" \
-    "vitpose_h_wholebody_model.onnx (ANIMATOR pose)" 1000000
-_verify_or_retry "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" \
-    "vitpose_h_wholebody_data.bin (ANIMATOR pose)" 1000000
-_verify_or_retry "$MODELS/detection" "yolov10m.onnx" \
-    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" \
-    "yolov10m.onnx (ANIMATOR detection)" 1000000
-
-# ── Verify foot bbox (AunyMoons — another potentially flaky source) ──
-_verify_or_retry "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
-    "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt" \
-    "foot-yolov8l.pt (bbox detector)"
 
 echo ""
 
