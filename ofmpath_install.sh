@@ -221,6 +221,15 @@ echo -e "\n━━━ Phase C: Download models ━━━"
 echo "[PROGRESS: 55]"
 echo "Found 57 models to verify"
 
+# Ensure huggingface_hub is available (primary HF download method)
+if ! python3 -c "from huggingface_hub import hf_hub_download" 2>/dev/null; then
+    echo "[OFM-INNER] Installing huggingface_hub..."
+    "$PIP" install -q huggingface_hub 2>/dev/null || true
+fi
+# Disable HF transfer for stability, disable symlinks
+export HF_HUB_ENABLE_HF_TRANSFER=0
+export HF_HUB_DISABLE_SYMLINKS_WARNING=1
+
 _MODEL_IDX=0
 _MODEL_TOTAL=57
 
@@ -254,66 +263,74 @@ _dl() {
 
     local is_hf=0
     [[ "$url" =~ huggingface\.co ]] && is_hf=1
-    local hdr=""
-    [ $is_hf -eq 1 ] && hdr="Authorization: Bearer $HF_TOKEN"
-
-    # ── XET bypass: append ?download=true to HF resolve URLs ──
-    # HuggingFace migrated repos to XET storage; bare /resolve/ URLs
-    # return 302→XET which breaks curl/aria2c. ?download=true forces
-    # the legacy LFS-compatible direct download path.
-    if [ $is_hf -eq 1 ] && [[ "$url" =~ /resolve/ ]] && [[ "$url" != *"?download=true"* ]]; then
-        url="${url}?download=true"
-        echo "  [hf] XET bypass: appended ?download=true"
-    fi
-
     local ok=0
 
-    # ── Strategy 1: curl (primary — handles XET 302 redirects reliably) ──
-    if [ $ok -eq 0 ]; then
-        if [ -n "$hdr" ]; then
-            timeout 1800 curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
-                -H "$hdr" -o "$dir/$file" "$url" 2>/dev/null && ok=1
-        else
-            timeout 1800 curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
-                -o "$dir/$file" "$url" 2>/dev/null && ok=1
+    # ── Strategy 1 (HF only): huggingface_hub Python library ──
+    # This handles XET storage, auth, resumption natively.
+    # Parse URL: https://huggingface.co/{repo}/resolve/{rev}/{path}
+    if [ $ok -eq 0 ] && [ $is_hf -eq 1 ]; then
+        local hf_repo hf_filepath
+        # Extract repo_id and filepath from URL
+        hf_repo=$(echo "$url" | sed -n 's|https://huggingface\.co/\([^/]*/[^/]*\)/resolve/.*|\1|p')
+        hf_filepath=$(echo "$url" | sed -n 's|https://huggingface\.co/[^/]*/[^/]*/resolve/[^/]*/\(.*\)|\1|p')
+        # Strip query params from filepath
+        hf_filepath=$(echo "$hf_filepath" | sed 's/?.*//')
+        # URL-decode %2F etc
+        hf_filepath=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('$hf_filepath'))" 2>/dev/null || echo "$hf_filepath")
+
+        if [ -n "$hf_repo" ] && [ -n "$hf_filepath" ]; then
+            echo "  [hf-hub] repo=$hf_repo file=$hf_filepath"
+            if python3 -c "
+import shutil, os
+from huggingface_hub import hf_hub_download
+path = hf_hub_download(repo_id='$hf_repo', filename='$hf_filepath', token=False)
+os.makedirs('$dir', exist_ok=True)
+shutil.copy2(path, '$dir/$file')
+print(f'  [hf-hub] OK: {os.path.getsize(\"$dir/$file\")} bytes')
+" 2>&1; then
+                ok=1
+            else
+                echo "  [hf-hub] Failed, falling through to curl..."
+            fi
         fi
     fi
 
-    # ── Strategy 2: curl WITHOUT auth (HF public repos — bad token can 403) ──
-    if [ $ok -eq 0 ] && [ $is_hf -eq 1 ]; then
-        echo "  [↻] Retrying without auth header..."
+    # ── Strategy 2: curl without auth (public repos) ──
+    if [ $ok -eq 0 ]; then
+        local dl_url="$url"
+        # Append ?download=true for HF resolve URLs (XET bypass)
+        if [ $is_hf -eq 1 ] && [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]]; then
+            dl_url="${dl_url}?download=true"
+        fi
         rm -f "$dir/$file"
         timeout 1800 curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
-            -o "$dir/$file" "$url" 2>/dev/null && ok=1
+            -o "$dir/$file" "$dl_url" 2>/dev/null && ok=1
     fi
 
-    # ── Strategy 3: aria2c single-connection fallback (no multi-conn for HF) ──
+    # ── Strategy 3: curl WITH auth (gated repos) ──
+    if [ $ok -eq 0 ] && [ $is_hf -eq 1 ] && [ -n "${HF_TOKEN:-}" ]; then
+        echo "  [↻] Retrying with HF auth..."
+        local dl_url="$url"
+        [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]] && dl_url="${dl_url}?download=true"
+        rm -f "$dir/$file"
+        timeout 1800 curl -fSL --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            -o "$dir/$file" "$dl_url" 2>/dev/null && ok=1
+    fi
+
+    # ── Strategy 4: aria2c (non-HF CDNs or last resort) ──
     if [ $ok -eq 0 ] && command -v aria2c >/dev/null 2>&1; then
-        echo "  [↻] Retrying with aria2c (single-conn)..."
+        echo "  [↻] aria2c fallback..."
         rm -f "$dir/$file"
-        local aria_conns=1
-        [ $is_hf -eq 0 ] && aria_conns=16   # multi-conn OK for non-HF CDNs
-        if [ -n "$hdr" ]; then
-            timeout 1800 aria2c --console-log-level=error -c \
-                -x "$aria_conns" -s "$aria_conns" -k 1M \
-                --header="$hdr" \
-                -d "$dir" -o "$file" "$url" 2>&1 | tail -3 && ok=1
-        else
-            timeout 1800 aria2c --console-log-level=error -c \
-                -x "$aria_conns" -s "$aria_conns" -k 1M \
-                -d "$dir" -o "$file" "$url" 2>&1 | tail -3 && ok=1
-        fi
+        timeout 1800 aria2c --console-log-level=error -c -x 4 -s 4 -k 1M \
+            -d "$dir" -o "$file" "$url" 2>&1 | tail -3 && ok=1
     fi
 
-    # ── Strategy 4: wget last resort ──
+    # ── Strategy 5: wget ──
     if [ $ok -eq 0 ] && command -v wget >/dev/null 2>&1; then
-        echo "  [↻] Last resort: wget..."
+        echo "  [↻] wget fallback..."
         rm -f "$dir/$file"
-        if [ -n "$hdr" ]; then
-            timeout 1800 wget -q --header="$hdr" -O "$dir/$file" "$url" 2>/dev/null && ok=1
-        else
-            timeout 1800 wget -q -O "$dir/$file" "$url" 2>/dev/null && ok=1
-        fi
+        timeout 1800 wget -q -O "$dir/$file" "$url" 2>/dev/null && ok=1
     fi
 
     if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
@@ -475,28 +492,44 @@ _verify_or_retry() {
         return 0  # OK
     fi
     echo "[OFM-INNER] ⚠ MISSING/INCOMPLETE: $label ($path)"
-    echo "[OFM-INNER]   → Aggressive retry (3 attempts, no auth, single-conn)..."
     mkdir -p "$dir"
     rm -f "$path"
-    # XET bypass for HF URLs
-    if [[ "$url" =~ huggingface\.co ]] && [[ "$url" =~ /resolve/ ]] && [[ "$url" != *"?download=true"* ]]; then
-        url="${url}?download=true"
+
+    # Try 1: huggingface_hub (handles XET natively)
+    if [[ "$url" =~ huggingface\.co ]]; then
+        local hf_repo hf_fp
+        hf_repo=$(echo "$url" | sed -n 's|https://huggingface\.co/\([^/]*/[^/]*\)/resolve/.*|\1|p')
+        hf_fp=$(echo "$url" | sed -n 's|https://huggingface\.co/[^/]*/[^/]*/resolve/[^/]*/\(.*\)|\1|p')
+        hf_fp=$(echo "$hf_fp" | sed 's/?.*//')
+        hf_fp=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('$hf_fp'))" 2>/dev/null || echo "$hf_fp")
+        if [ -n "$hf_repo" ] && [ -n "$hf_fp" ]; then
+            echo "  [hf-hub recovery] repo=$hf_repo file=$hf_fp"
+            python3 -c "
+import shutil, os
+from huggingface_hub import hf_hub_download
+p = hf_hub_download(repo_id='$hf_repo', filename='$hf_fp', token=False)
+os.makedirs('$dir', exist_ok=True)
+shutil.copy2(p, '$dir/$file')
+print(f'  [✓] hf-hub: {os.path.getsize(\"$dir/$file\")} bytes')
+" 2>&1 && [ -f "$path" ] && [ "$(stat -c%s "$path" 2>/dev/null || echo 0)" -ge "$min_bytes" ] && return 0
+        fi
     fi
-    local attempt=0
-    while [ $attempt -lt 3 ]; do
-        attempt=$((attempt+1))
-        echo "  [retry $attempt/3] $label"
-        # No auth header — public repos don't need it, and stale tokens cause 403
-        timeout 600 curl -fSL --retry 2 --retry-delay 3 --retry-all-errors \
-            -o "$path" "$url" 2>&1 | tail -2
+
+    # Try 2: curl with ?download=true, no auth
+    local dl_url="$url"
+    [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]] && dl_url="${dl_url}?download=true"
+    for attempt in 1 2 3; do
+        echo "  [curl retry $attempt/3] $label"
+        rm -f "$path"
+        timeout 600 curl -fSL --retry 2 --retry-delay 3 -o "$path" "$dl_url" 2>&1 | tail -2
         if [ -f "$path" ] && [ "$(stat -c%s "$path" 2>/dev/null || echo 0)" -ge "$min_bytes" ]; then
-            echo "  [✓] Recovered $label ($(stat -c%s "$path") bytes)"
+            echo "  [✓] curl recovered ($(stat -c%s "$path") bytes)"
             return 0
         fi
-        rm -f "$path"
         sleep 3
     done
-    echo "  [✗] FAILED to recover $label after 3 retries"
+
+    echo "  [✗] FAILED to recover $label"
     return 1
 }
 
