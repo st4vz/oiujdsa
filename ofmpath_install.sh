@@ -246,19 +246,9 @@ _HF_HDR="Authorization: Bearer $HF_TOKEN"
 _add() {
     local dir="$1" file="$2" url="$3"
     mkdir -p "$dir"
-    # Skip if already cached AND valid
-    if [ -f "$dir/$file" ]; then
-        if [[ "$file" =~ \.(json|txt|jinja)$ ]] && [ -s "$dir/$file" ]; then
-            return
-        fi
-        local sz=$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)
-        if [ "$sz" -gt 10000 ]; then
-            local hd=$(head -c 16 "$dir/$file" 2>/dev/null | tr -d '\0')
-            if ! echo "$hd" | grep -qiE '<!doctype|<html|{"error'; then
-                return  # Valid cached file
-            fi
-            rm -f "$dir/$file"  # HTML error page — re-download
-        fi
+    # Skip if already cached (exists + non-empty)
+    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
+        return
     fi
     local dl_url="$url"
     [[ "$dl_url" =~ huggingface\.co ]] && [[ "$dl_url" =~ /resolve/ ]] && [[ "$dl_url" != *"?download=true"* ]] && dl_url="${dl_url}?download=true"
@@ -339,25 +329,16 @@ _add "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safete
 _add "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" \
     "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors"
 
-# DETECTION (3)
-_add "$MODELS/detection" "yolov10m.onnx" \
-    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx"
-_add "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin"
-_add "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx"
+# DETECTION (3) — XET-broken, handled by _hf_direct after batch
+# (vitpose + yolov10m excluded from aria2c batch)
 
-# SAM (1)
-_add "$MODELS/sams" "sam_vit_b_01ec64.pth" \
-    "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/sams/sam_vit_b_01ec64.pth"
+# SAM (1) — handled by _hf_direct
 
 # UPSCALER (1)
 _add "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/4xUltrasharp_4xUltrasharpV10.pt"
 
-# ULTRALYTICS BBOX (11)
-_add "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
-    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt"
+# ULTRALYTICS BBOX (11) — face/hand/foot XET-broken, handled by _hf_direct
 _add "$MODELS/ultralytics/bbox" "femaleBodyDetection_yolo26.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/femaleBodyDetection_yolo26.pt"
 _add "$MODELS/ultralytics/bbox" "female_breast-v4.2.pt" \
@@ -374,10 +355,6 @@ _add "$MODELS/ultralytics/bbox" "Eyes.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyes.pt"
 _add "$MODELS/ultralytics/bbox" "FacesV1.pt" \
     "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/FacesV1.pt"
-_add "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
-    "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt"
-_add "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
-    "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt"
 
 # QWEN3 VL (13)
 _QWEN_DIR="$MODELS/LLM/Qwen3-VL-4B-Instruct-heretic-7refusal"
@@ -426,57 +403,41 @@ else
 fi
 rm -f "$_MANIFEST"
 
-# ── Post-download validation: purge HTML error pages ──
-# aria2c silently "succeeds" when XET repos return error pages.
-# These are valid HTTP 200 responses containing HTML, saved as .safetensors/.pt/.onnx/.bin.
-# Detect and delete them so hf_fallback can re-download properly.
-echo "[OFM-INNER] Validating downloaded files..."
-_PURGED=0
-while IFS= read -r -d '' _f; do
-    # Skip small config files
-    [[ "$_f" =~ \.(json|txt|jinja)$ ]] && continue
-    # Check first bytes for HTML content
-    _head=$(head -c 32 "$_f" 2>/dev/null | tr -d '\0')
-    if echo "$_head" | grep -qiE '<!doctype|<html|<!--|<\?xml|{"error|Access denied|404|302 Found'; then
-        echo "  [purge] $(basename "$_f") — HTML error page ($(stat -c%s "$_f") bytes)"
-        rm -f "$_f"
-        _PURGED=$((_PURGED + 1))
-        continue
+# ── Direct hf_hub_download for XET-broken repos ──
+# These repos break aria2c (returns HTML error pages as valid 200 responses).
+# Download them ONLY via hf_hub_download — never through aria2c.
+echo "[OFM-INNER] Downloading XET-incompatible models via hf_hub..."
+_hf_direct() {
+    local dir="$1" file="$2" repo="$3" rpath="$4"
+    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
+        echo "  [ok] $file (cached)"
+        return 0
     fi
-    # Binary model files should be > 10KB minimum (error pages are typically 1-8KB)
-    if [[ "$_f" =~ \.(safetensors|pt|pth|onnx|bin)$ ]]; then
-        _sz=$(stat -c%s "$_f" 2>/dev/null || echo 0)
-        # .onnx can be small (~80KB) but never < 10KB for real models
-        if [ "$_sz" -lt 10000 ]; then
-            echo "  [purge] $(basename "$_f") — suspiciously small (${_sz} bytes)"
-            rm -f "$_f"
-            _PURGED=$((_PURGED + 1))
-        fi
-    fi
-done < <(find "$MODELS" -maxdepth 4 -type f \( -name "*.safetensors" -o -name "*.pt" -o -name "*.pth" -o -name "*.onnx" -o -name "*.bin" \) -print0 2>/dev/null)
-echo "[OFM-INNER] Purged $_PURGED invalid files"
+    echo "  [hf-hub] $file ← $repo/$rpath"
+    mkdir -p "$dir"
+    python3 -c "
+import shutil, os
+from huggingface_hub import hf_hub_download
+p = hf_hub_download(repo_id='$repo', filename='$rpath', token=False)
+os.makedirs('$dir', exist_ok=True)
+shutil.copy2(p, '$dir/$file')
+print(f'    OK: {os.path.getsize(\"$dir/$file\")} bytes')
+" 2>&1 || echo "  [✗] FAILED: $file"
+}
+_hf_direct "$MODELS/ultralytics/bbox" "face_yolov8s.pt"              "Bingsu/adetailer" "face_yolov8s.pt"
+_hf_direct "$MODELS/ultralytics/bbox" "hand_yolov8s.pt"              "Bingsu/adetailer" "hand_yolov8s.pt"
+_hf_direct "$MODELS/detection" "vitpose_h_wholebody_model.onnx"      "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_model.onnx"
+_hf_direct "$MODELS/detection" "vitpose_h_wholebody_data.bin"        "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_data.bin"
+_hf_direct "$MODELS/detection" "yolov10m.onnx"                       "Wan-AI/Wan2.2-Animate-14B" "process_checkpoint/det/yolov10m.onnx"
+_hf_direct "$MODELS/ultralytics/bbox" "foot-yolov8l.pt"              "AunyMoons/loras-pack" "foot-yolov8l.pt"
+_hf_direct "$MODELS/sams" "sam_vit_b_01ec64.pth"                     "datasets/Gourieff/ReActor" "models/sams/sam_vit_b_01ec64.pth"
 
-# ── Second pass: hf_hub_download for anything aria2c missed (XET repos) ──
-echo "[OFM-INNER] Verifying all models + XET fallback..."
+# ── Verify remaining aria2c downloads, fallback via hf_hub if missing ──
+echo "[OFM-INNER] Verifying aria2c downloads..."
 _hf_fallback() {
     local dir="$1" file="$2" repo="$3" rpath="$4"
-    if [ -f "$dir/$file" ]; then
-        local sz=$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)
-        # Small config files: just check exists + non-empty
-        if [[ "$file" =~ \.(json|txt|jinja)$ ]] && [ "$sz" -gt 0 ]; then
-            return 0
-        fi
-        # Binary model files: must be > 10KB AND not an HTML error page
-        if [ "$sz" -gt 10000 ]; then
-            local hd=$(head -c 32 "$dir/$file" 2>/dev/null | tr -d '\0')
-            if ! echo "$hd" | grep -qiE '<!doctype|<html|{"error'; then
-                return 0
-            fi
-            echo "  [!] $file is an HTML error page, re-downloading..."
-            rm -f "$dir/$file"
-        else
-            [ "$sz" -gt 0 ] && rm -f "$dir/$file"
-        fi
+    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
+        return 0
     fi
     echo "  [hf-hub] $file ← $repo/$rpath"
     mkdir -p "$dir"
@@ -490,17 +451,7 @@ print(f'    OK: {os.path.getsize(\"$dir/$file\")} bytes')
 " 2>&1 || echo "  [✗] FAILED: $file"
 }
 
-# Only the known-problematic files need explicit fallback entries.
-# If any other model also failed, it'll be caught by the audit.
-_hf_fallback "$MODELS/ultralytics/bbox" "face_yolov8s.pt"   "Bingsu/adetailer" "face_yolov8s.pt"
-_hf_fallback "$MODELS/ultralytics/bbox" "hand_yolov8s.pt"   "Bingsu/adetailer" "hand_yolov8s.pt"
-_hf_fallback "$MODELS/detection" "vitpose_h_wholebody_model.onnx" "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_model.onnx"
-_hf_fallback "$MODELS/detection" "vitpose_h_wholebody_data.bin"   "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_data.bin"
-_hf_fallback "$MODELS/detection" "yolov10m.onnx" "Wan-AI/Wan2.2-Animate-14B" "process_checkpoint/det/yolov10m.onnx"
-_hf_fallback "$MODELS/ultralytics/bbox" "foot-yolov8l.pt"   "AunyMoons/loras-pack" "foot-yolov8l.pt"
-_hf_fallback "$MODELS/sams" "sam_vit_b_01ec64.pth" "datasets/Gourieff/ReActor" "models/sams/sam_vit_b_01ec64.pth"
-
-# Full sweep: any HF model still missing gets hf_hub_download
+# Full sweep: any model still missing gets hf_hub_download
 _hf_fallback "$MODELS/diffusion_models" "z_image_turbo_bf16.safetensors" "Comfy-Org/z_image_turbo" "split_files/diffusion_models/z_image_turbo_bf16.safetensors"
 _hf_fallback "$MODELS/diffusion_models" "z-image-turbo-fp8-e4m3fn.safetensors" "T5B/Z-Image-Turbo-FP8" "z-image-turbo-fp8-e4m3fn.safetensors"
 _hf_fallback "$MODELS/diffusion_models" "WanModel.safetensors" "wdsfdsdf/OFMHUB" "WanModel.safetensors"
