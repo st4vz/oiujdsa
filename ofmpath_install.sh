@@ -368,11 +368,9 @@ echo "[OFM-INNER] ✓ Phase C model downloads complete"
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C.5: XET fallback + path fixes ━━━"
 
-# Install huggingface_hub if not present
-if ! python3 -c "from huggingface_hub import hf_hub_download" 2>/dev/null; then
-    echo "[OFM-INNER] Installing huggingface_hub..."
-    "$PIP" install -q huggingface_hub 2>/dev/null || true
-fi
+# Install/upgrade huggingface_hub WITH hf_xet (native XET support)
+# Without hf_xet, XET repos silently fall back to broken HTTP downloads
+"$PIP" install -U "huggingface_hub[hf_xet]" --quiet 2>&1 | tail -3
 
 # hf_hub_download for models that aria2c/curl consistently fail on.
 # ALWAYS re-download these — aria2c writes garbage HTML for XET repos.
@@ -399,7 +397,7 @@ _hf_fix "$MODELS/detection" "vitpose_h_wholebody_model.onnx" "Kijai/vitpose_comf
 _hf_fix "$MODELS/detection" "vitpose_h_wholebody_data.bin"   "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_data.bin" "vitpose_data"
 _hf_fix "$MODELS/detection" "yolov10m.onnx"                  "Wan-AI/Wan2.2-Animate-14B" "process_checkpoint/det/yolov10m.onnx" "yolov10m"
 _hf_fix "$MODELS/ultralytics/bbox" "foot-yolov8l.pt"         "AunyMoons/loras-pack" "foot-yolov8l.pt" "foot_yolov8l"
-_hf_fix "$MODELS/sams" "sam_vit_b_01ec64.pth"                "Gourieff/ReActor" "models/sams/sam_vit_b_01ec64.pth" "sam_vit_b" "dataset"
+_hf_fix "$MODELS/sams" "sam_vit_b_01ec64.pth"                "ybelkada/segment-anything" "checkpoints/sam_vit_b_01ec64.pth" "sam_vit_b"
 
 # Path fixes: copy models to alternate locations workflows may reference
 mkdir -p "$MODELS/checkpoints" "$MODELS/checkpoints/bbox"
