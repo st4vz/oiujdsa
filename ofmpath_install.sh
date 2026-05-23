@@ -524,7 +524,8 @@ WHITELIST
 echo "[OFM-INNER] ✓ Impact Subpack whitelist written ($(wc -l < "$_WL_DIR/model-whitelist.txt") models)"
 
 # ComfyUI-Manager config: disable missing model popup on workflow open
-_MGR_DIR="$SETTINGS_DIR/__manager"
+# Path is user/__manager NOT user/default/__manager
+_MGR_DIR="$COMFYUI_DIR/user/__manager"
 mkdir -p "$_MGR_DIR"
 if [ ! -f "$_MGR_DIR/config.ini" ]; then
     cat > "$_MGR_DIR/config.ini" << 'MGRCONF'
