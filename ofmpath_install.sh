@@ -368,36 +368,65 @@ echo "[OFM-INNER] ✓ Phase C model downloads complete"
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C.5: XET fallback + path fixes ━━━"
 
-# Install/upgrade huggingface_hub WITH hf_xet (native XET support)
-# Without hf_xet, XET repos silently fall back to broken HTTP downloads
-"$PIP" install -U "huggingface_hub[hf_xet]" --quiet 2>&1 | tail -3
-
-# hf_hub_download for models that aria2c/curl consistently fail on.
-# ALWAYS re-download these — aria2c writes garbage HTML for XET repos.
+# Force-download XET-broken models using raw Python requests.
+# hf_hub_download fails without hf_xet. aria2c writes garbage for XET repos.
+# Raw requests.get() with redirect following is the only reliable method.
 _hf_fix() {
-    local dir="$1" file="$2" repo="$3" rpath="$4" label="$5" rtype="${6:-}"
+    local dir="$1" file="$2" url="$3" label="$4"
     rm -f "$dir/$file"
-    echo "[OFM-INNER] Downloading $label via hf_hub_download..."
+    echo "[OFM-INNER] Downloading $label..."
     mkdir -p "$dir"
-    local pytype="None"
-    [ -n "$rtype" ] && pytype="'$rtype'"
-    python3 -c "
-import shutil, os
-from huggingface_hub import hf_hub_download
-p = hf_hub_download(repo_id='$repo', filename='$rpath', token=False, repo_type=$pytype)
-os.makedirs('$dir', exist_ok=True)
-shutil.copy2(p, '$dir/$file')
-print(f'  OK: {os.path.getsize(\"$dir/$file\")} bytes')
-" 2>&1 || echo "  [!] hf_hub_download failed for $label"
+    python3 << PYEOF
+import os, sys
+try:
+    import requests
+except ImportError:
+    import subprocess
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', 'requests'])
+    import requests
+
+url = "$url"
+dest = "$dir/$file"
+print(f"  GET {url}")
+try:
+    r = requests.get(url, allow_redirects=True, stream=True, timeout=300)
+    r.raise_for_status()
+    with open(dest, 'wb') as f:
+        for chunk in r.iter_content(chunk_size=1048576):
+            f.write(chunk)
+    sz = os.path.getsize(dest)
+    print(f"  OK: {sz} bytes")
+except Exception as e:
+    print(f"  FAILED: {e}", file=sys.stderr)
+    # Cleanup partial file
+    if os.path.exists(dest):
+        os.remove(dest)
+PYEOF
+    if [ ! -f "$dir/$file" ] || [ ! -s "$dir/$file" ]; then
+        echo "  [!] FAILED: $label — trying wget..."
+        wget -q -O "$dir/$file" "$url" 2>/dev/null || true
+    fi
+    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
+        echo "  [✓] $label: $(stat -c%s "$dir/$file") bytes"
+    else
+        echo "  [✗] $label: ALL METHODS FAILED"
+    fi
 }
 
-_hf_fix "$MODELS/ultralytics/bbox" "face_yolov8s.pt"         "Bingsu/adetailer" "face_yolov8s.pt" "face_yolov8s"
-_hf_fix "$MODELS/ultralytics/bbox" "hand_yolov8s.pt"         "Bingsu/adetailer" "hand_yolov8s.pt" "hand_yolov8s"
-_hf_fix "$MODELS/detection" "vitpose_h_wholebody_model.onnx" "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_model.onnx" "vitpose_model"
-_hf_fix "$MODELS/detection" "vitpose_h_wholebody_data.bin"   "Kijai/vitpose_comfy" "onnx/vitpose_h_wholebody_data.bin" "vitpose_data"
-_hf_fix "$MODELS/detection" "yolov10m.onnx"                  "Wan-AI/Wan2.2-Animate-14B" "process_checkpoint/det/yolov10m.onnx" "yolov10m"
-_hf_fix "$MODELS/ultralytics/bbox" "foot-yolov8l.pt"         "AunyMoons/loras-pack" "foot-yolov8l.pt" "foot_yolov8l"
-_hf_fix "$MODELS/sams" "sam_vit_b_01ec64.pth"                "ybelkada/segment-anything" "checkpoints/sam_vit_b_01ec64.pth" "sam_vit_b"
+_hf_fix "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt?download=true" "face_yolov8s"
+_hf_fix "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
+    "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt?download=true" "hand_yolov8s"
+_hf_fix "$MODELS/sams" "sam_vit_b_01ec64.pth" \
+    "https://huggingface.co/ybelkada/segment-anything/resolve/main/checkpoints/sam_vit_b_01ec64.pth?download=true" "sam_vit_b"
+_hf_fix "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
+    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx?download=true" "vitpose_model"
+_hf_fix "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
+    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin?download=true" "vitpose_data"
+_hf_fix "$MODELS/detection" "yolov10m.onnx" \
+    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx?download=true" "yolov10m"
+_hf_fix "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
+    "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt?download=true" "foot_yolov8l"
 
 # Path fixes: copy models to alternate locations workflows may reference
 mkdir -p "$MODELS/checkpoints" "$MODELS/checkpoints/bbox"
