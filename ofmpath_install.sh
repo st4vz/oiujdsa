@@ -502,6 +502,46 @@ cat > "$SETTINGS_DIR/comfy.settings.json" << 'SETTINGSJSON'
 SETTINGSJSON
 echo "[OFM-INNER] ✓ Settings written"
 
+# Impact Subpack model whitelist — without this, .pt models refuse to load
+# (PyTorch weights_only=True security, Impact Pack V1.3.5+)
+_WL_DIR="$SETTINGS_DIR/ComfyUI-Impact-Subpack"
+mkdir -p "$_WL_DIR"
+cat > "$_WL_DIR/model-whitelist.txt" << 'WHITELIST'
+face_yolov8s.pt
+hand_yolov8s.pt
+foot-yolov8l.pt
+femaleBodyDetection_yolo26.pt
+female_breast-v4.2.pt
+nipples_yolov8s.pt
+vagina-v4.2.pt
+assdetailer.pt
+Eyeful_v2-Paired.pt
+Eyes.pt
+FacesV1.pt
+sam_vit_b_01ec64.pth
+4xUltrasharp_4xUltrasharpV10.pt
+WHITELIST
+echo "[OFM-INNER] ✓ Impact Subpack whitelist written ($(wc -l < "$_WL_DIR/model-whitelist.txt") models)"
+
+# ComfyUI-Manager config: disable missing model popup on workflow open
+_MGR_DIR="$SETTINGS_DIR/__manager"
+mkdir -p "$_MGR_DIR"
+if [ ! -f "$_MGR_DIR/config.ini" ]; then
+    cat > "$_MGR_DIR/config.ini" << 'MGRCONF'
+[default]
+check_missing_models = none
+MGRCONF
+    echo "[OFM-INNER] ✓ Manager config: check_missing_models=none"
+else
+    # Patch existing config
+    if grep -q "check_missing_models" "$_MGR_DIR/config.ini"; then
+        sed -i 's/check_missing_models.*/check_missing_models = none/' "$_MGR_DIR/config.ini"
+    else
+        echo "check_missing_models = none" >> "$_MGR_DIR/config.ini"
+    fi
+    echo "[OFM-INNER] ✓ Manager config patched: check_missing_models=none"
+fi
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  PHASE F — INVENTORY REPORT
