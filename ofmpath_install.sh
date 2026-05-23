@@ -370,10 +370,13 @@ echo -e "\n━━━ Phase C.5: XET fallback + path fixes ━━━"
 
 # Force-download XET-broken models using raw Python requests.
 # hf_hub_download fails without hf_xet. aria2c writes garbage for XET repos.
-# Raw requests.get() with redirect following is the only reliable method.
+# Only download if _dl failed. Never delete existing files.
 _hf_fix() {
     local dir="$1" file="$2" url="$3" label="$4"
-    rm -f "$dir/$file"
+    if [ -f "$dir/$file" ] && [ "$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)" -gt 1024 ]; then
+        echo "  [ok] $label ($(stat -c%s "$dir/$file") bytes)"
+        return 0
+    fi
     echo "[OFM-INNER] Downloading $label..."
     mkdir -p "$dir"
     python3 << PYEOF
@@ -384,7 +387,6 @@ except ImportError:
     import subprocess
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', 'requests'])
     import requests
-
 url = "$url"
 dest = "$dir/$file"
 print(f"  GET {url}")
@@ -394,23 +396,15 @@ try:
     with open(dest, 'wb') as f:
         for chunk in r.iter_content(chunk_size=1048576):
             f.write(chunk)
-    sz = os.path.getsize(dest)
-    print(f"  OK: {sz} bytes")
+    print(f"  OK: {os.path.getsize(dest)} bytes")
 except Exception as e:
     print(f"  FAILED: {e}", file=sys.stderr)
-    # Cleanup partial file
-    if os.path.exists(dest):
-        os.remove(dest)
+    if os.path.exists(dest): os.remove(dest)
 PYEOF
     if [ ! -f "$dir/$file" ] || [ ! -s "$dir/$file" ]; then
-        echo "  [!] FAILED: $label — trying wget..."
         wget -q -O "$dir/$file" "$url" 2>/dev/null || true
     fi
-    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
-        echo "  [✓] $label: $(stat -c%s "$dir/$file") bytes"
-    else
-        echo "  [✗] $label: ALL METHODS FAILED"
-    fi
+    [ -f "$dir/$file" ] && [ -s "$dir/$file" ] && echo "  [✓] $label: $(stat -c%s "$dir/$file") bytes"
 }
 
 _hf_fix "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
