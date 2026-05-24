@@ -295,9 +295,9 @@ _dl_files "$MODELS/diffusion_models" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanModel.safetensors"
 # ANIMATOR: detection
 _dl_files "$MODELS/detection" \
-    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx"
+    "https://huggingface.co/st4vz/process_checkpoint/resolve/main/yolov10m.onnx" \
+    "https://huggingface.co/st4vz/process_checkpoint/resolve/main/vitpose_h_wholebody_data.bin" \
+    "https://huggingface.co/st4vz/process_checkpoint/resolve/main/vitpose_h_wholebody_model.onnx"
 # ANIMATOR: loras (includes controlnet)
 _dl_files "$MODELS/loras" \
     "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanFun.reworked.safetensors" \
