@@ -189,251 +189,145 @@ fi
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE C — DOWNLOAD MODELS (57 total)
+#  PHASE C — DOWNLOAD MODELS
+#  Using wget -nc --content-disposition (same method as reference scripts)
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase C: Download models ━━━"
 echo "[PROGRESS: 55]"
-echo "Found 57 models to verify"
 
-_MODEL_IDX=0
-_MODEL_TOTAL=57
-
-_dl() {
-    local dir="$1" file="$2" url="$3" label="${4:-asset}"
-    _MODEL_IDX=$((_MODEL_IDX + 1))
-    local pct=$(( 55 + (_MODEL_IDX * 35 / _MODEL_TOTAL) ))
+_dl_files() {
+    local dir="$1"; shift
     mkdir -p "$dir"
-    echo "[STARTING] '${label}'"
-    if [ -f "$dir/$file" ] && [ "$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)" -gt 1024 ]; then
-        echo "  [ok] cached ($(stat -c%s "$dir/$file") bytes)"
-        echo "[SUCCESS]"
-        echo "[PROGRESS: ${pct}]"
-        return
-    fi
-    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ] && [[ "$file" =~ \.(json|txt|jinja)$ ]]; then
-        echo "  [ok] cached (small file)"
-        echo "[SUCCESS]"
-        echo "[PROGRESS: ${pct}]"
-        return
-    fi
-
-    local hdr=""
-    [[ "$url" =~ huggingface\.co ]] && hdr="Authorization: Bearer $HF_TOKEN"
-
-    if command -v aria2c >/dev/null 2>&1; then
-        if [ -n "$hdr" ]; then
-            timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M --header="$hdr" \
-                -d "$dir" -o "$file" "$url" >/dev/null 2>&1 \
-                || timeout 1800 curl -fsSL --retry 2 -H "$hdr" -o "$dir/$file" "$url" 2>/dev/null
-        else
-            timeout 1800 aria2c --console-log-level=error -c -x 16 -s 16 -k 1M \
-                -d "$dir" -o "$file" "$url" >/dev/null 2>&1 \
-                || timeout 1800 curl -fsSL --retry 2 -o "$dir/$file" "$url" 2>/dev/null
+    for url in "$@"; do
+        local file=$(basename "$url" | sed 's/?.*//')
+        if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
+            echo "  [ok] $file"
+            continue
         fi
-    else
-        if [ -n "$hdr" ]; then
-            timeout 1800 curl -fsSL --retry 2 -H "$hdr" -o "$dir/$file" "$url" 2>/dev/null
-        else
-            timeout 1800 curl -fsSL --retry 2 -o "$dir/$file" "$url" 2>/dev/null
-        fi
-    fi
-
-    if [ -f "$dir/$file" ] && [ -s "$dir/$file" ]; then
-        echo "  [dl] $(stat -c%s "$dir/$file") bytes"
-        echo "[SUCCESS]"
-    else
-        echo "[FAILED] $label"
-    fi
-    echo "[PROGRESS: ${pct}]"
+        echo "  [dl] $file"
+        wget -q -nc --content-disposition -P "$dir" "$url" 2>/dev/null || true
+    done
 }
 
-# DIFFUSION (3)
-_dl "$MODELS/diffusion_models" "z_image_turbo_bf16.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" "z_image_bf16"
-_dl "$MODELS/diffusion_models" "z-image-turbo-fp8-e4m3fn.safetensors" \
-    "https://huggingface.co/T5B/Z-Image-Turbo-FP8/resolve/main/z-image-turbo-fp8-e4m3fn.safetensors" "z_image_fp8"
-_dl "$MODELS/diffusion_models" "WanModel.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanModel.safetensors" "wan_diffusion"
+echo "[OFM-INNER] Downloading T2I models..."
+# T2I: clip
+_dl_files "$MODELS/clip" \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
+# T2I: text_encoders
+_dl_files "$MODELS/text_encoders" \
+    "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/refs%2Fpr%2F5/models/clip/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors"
+# T2I: unet
+_dl_files "$MODELS/unet" \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+# T2I: vae
+_dl_files "$MODELS/vae" \
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors"
+# T2I: ckpt
+_dl_files "$MODELS/ckpt" \
+    "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors"
+# T2I: model_patches (controlnet union)
+_dl_files "$MODELS/model_patches" \
+    "https://huggingface.co/arhiteector/zimage/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
+# T2I: diffusion_models
+_dl_files "$MODELS/diffusion_models" \
+    "https://huggingface.co/T5B/Z-Image-Turbo-FP8/resolve/main/z-image-turbo-fp8-e4m3fn.safetensors"
+# T2I: bbox detectors (ALL from gazsuv — no Bingsu XET problems)
+_dl_files "$MODELS/ultralytics/bbox" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/face_yolov8s.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/femaleBodyDetection_yolo26.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/female_breast-v4.2.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/nipples_yolov8s.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/vagina-v4.2.pt" \
+    "https://huggingface.co/gazsuv/xmode/resolve/main/assdetailer.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyeful_v2-Paired.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyes.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/FacesV1.pt" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/hand_yolov8s.pt" \
+    "https://huggingface.co/AunyMoons/loras-pack/blob/main/foot-yolov8l.pt"
+# T2I: SAM
+_dl_files "$MODELS/sams" \
+    "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/sams/sam_vit_b_01ec64.pth"
+# T2I: loras
+_dl_files "$MODELS/loras" \
+    "https://huggingface.co/gazsuv/sudoku/resolve/main/real.safetensors" \
+    "https://huggingface.co/gazsuv/sudoku/resolve/main/XXX.safetensors" \
+    "https://huggingface.co/gazsuv/sudoku/resolve/main/gpu.safetensors"
+# T2I: Qwen3 VL
+_dl_files "$MODELS/prompt_generator/Qwen3-VL-4B-Instruct-heretic-7refusal" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/added_tokens.json" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/chat_template.jinja" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/config.json" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/generation_config.json" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/merges.txt" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/model.safetensors.index.json" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/preprocessor_config.json" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/special_tokens_map.json" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/tokenizer.json" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/tokenizer_config.json" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/vocab.json"
+_dl_files "$MODELS/prompt_generator/Qwen3-VL-4B-Instruct-heretic-7refusal" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/model-00001-of-00002.safetensors" \
+    "https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main/model-00002-of-00002.safetensors"
+# T2I: upscaler
+_dl_files "$MODELS/upscale_models" \
+    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/4xUltrasharp_4xUltrasharpV10.pt"
+# T2I: SeedVR2
+_dl_files "$MODELS/SEEDVR2" \
+    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" \
+    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors"
 
-# TEXT ENCODERS (3)
-_dl "$MODELS/text_encoders" "qwen_3_4b.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" "qwen3_4b"
-_dl "$MODELS/text_encoders" "umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" \
-    "https://huggingface.co/UmeAiRT/ComfyUI-Auto_installer/resolve/refs%2Fpr%2F5/models/clip/umt5-xxl-encoder-fp8-e4m3fn-scaled.safetensors" "umt5xxl"
-_dl "$MODELS/text_encoders" "text_enc.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors" "text_enc"
+echo "[PROGRESS: 70]"
+echo "[OFM-INNER] Downloading ANIMATOR models..."
+# ANIMATOR: clip + clip_vision
+_dl_files "$MODELS/clip" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors"
+_dl_files "$MODELS/clip_vision" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors" \
+    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+# ANIMATOR: text_encoders
+_dl_files "$MODELS/text_encoders" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/text_enc.safetensors"
+# ANIMATOR: vae
+_dl_files "$MODELS/vae" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors"
+# ANIMATOR: diffusion_models
+_dl_files "$MODELS/diffusion_models" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanModel.safetensors"
+# ANIMATOR: detection
+_dl_files "$MODELS/detection" \
+    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" \
+    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" \
+    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx"
+# ANIMATOR: loras (includes controlnet)
+_dl_files "$MODELS/loras" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanFun.reworked.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/light.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors" \
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors"
+# ANIMATOR: controlnet
+_dl_files "$MODELS/controlnet" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"
 
-# CLIP VISION (2)
-_dl "$MODELS/clip_vision" "klip_vision.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors" "clip_vision_k"
-_dl "$MODELS/clip_vision" "clip_vision_h.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors" "clip_vision_h"
+echo "[PROGRESS: 80]"
+echo "[OFM-INNER] Downloading LIPSYNC models..."
+# LIPSYNC: loras
+_dl_files "$MODELS/loras" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" \
+    "https://huggingface.co/Kijai/Wan2.1-Fun-Reward-LoRAs-comfy/resolve/main/Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors"
+# LIPSYNC: text_encoders
+_dl_files "$MODELS/text_encoders" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors"
+# LIPSYNC: vae
+_dl_files "$MODELS/vae" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors"
+# LIPSYNC: diffusion_models
+_dl_files "$MODELS/diffusion_models" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors"
+_dl_files "$MODELS/diffusion_models/InfiniteTalk" \
+    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors"
 
-# VAE (2)
-_dl "$MODELS/vae" "ae.safetensors" \
-    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" "vae_ae"
-_dl "$MODELS/vae" "vae.safetensors" \
-    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors" "vae_wan"
-
-# CONTROLNET (2)
-_dl "$MODELS/controlnet" "Wan21_Uni3C_controlnet_fp16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors" "ctrl_wan"
-_dl "$MODELS/controlnet" "Z-Image-Turbo-Fun-Controlnet-Union.safetensors" \
-    "https://huggingface.co/arhiteector/zimage/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors" "ctrl_zimg"
-
-# CHECKPOINTS (1)
-_dl "$MODELS/checkpoints" "detect.safetensors" \
-    "https://huggingface.co/gazsuv/sudoku/resolve/main/detect.safetensors" "ckpt_detect"
-
-# LORAS (7)
-_dl "$MODELS/loras" "real.safetensors" "https://huggingface.co/gazsuv/sudoku/resolve/main/real.safetensors" "lora_real"
-_dl "$MODELS/loras" "XXX.safetensors" "https://huggingface.co/gazsuv/sudoku/resolve/main/XXX.safetensors" "lora_xxx"
-_dl "$MODELS/loras" "gpu.safetensors" "https://huggingface.co/gazsuv/sudoku/resolve/main/gpu.safetensors" "lora_gpu"
-_dl "$MODELS/loras" "WanFun.reworked.safetensors" "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanFun.reworked.safetensors" "lora_wanfun"
-_dl "$MODELS/loras" "light.safetensors" "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/light.safetensors" "lora_light"
-_dl "$MODELS/loras" "WanPusa.safetensors" "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors" "lora_pusa"
-_dl "$MODELS/loras" "wan.reworked.safetensors" "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors" "lora_wanrw"
-
-# LIPSYNC-SPECIFIC (6)
-_dl "$MODELS/loras" "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors" "lora_lightx2v"
-_dl "$MODELS/loras" "Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" \
-    "https://huggingface.co/Kijai/Wan2.1-Fun-Reward-LoRAs-comfy/resolve/main/Wan2.1-Fun-14B-InP-HPS2.1_reward_lora_comfy.safetensors" "lora_funreward"
-_dl "$MODELS/text_encoders" "umt5-xxl-enc-fp8_e4m3fn.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-fp8_e4m3fn.safetensors" "umt5_kj_fp8"
-_dl "$MODELS/vae" "Wan2_1_VAE_bf16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors" "vae_wan_bf16"
-_dl "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" "wan_i2v_480p"
-_dl "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" "infinitetalk"
-
-# DETECTION (3)
-_dl "$MODELS/detection" "yolov10m.onnx" \
-    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx" "det_yolo"
-_dl "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin" "det_vitpose_data"
-_dl "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx" "det_vitpose_model"
-
-# SAM (1)
-_dl "$MODELS/sams" "sam_vit_b_01ec64.pth" \
-    "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/sams/sam_vit_b_01ec64.pth" "sam_vit_b"
-
-# UPSCALER (1)
-_dl "$MODELS/upscale_models" "4xUltrasharp_4xUltrasharpV10.pt" \
-    "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/4xUltrasharp_4xUltrasharpV10.pt" "upscaler"
-
-# ULTRALYTICS BBOX (11)
-_dl "$MODELS/ultralytics/bbox" "face_yolov8s.pt" "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt" "bbox_face"
-_dl "$MODELS/ultralytics/bbox" "femaleBodyDetection_yolo26.pt" "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/femaleBodyDetection_yolo26.pt" "bbox_body"
-_dl "$MODELS/ultralytics/bbox" "female_breast-v4.2.pt" "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/female_breast-v4.2.pt" "bbox_breast"
-_dl "$MODELS/ultralytics/bbox" "nipples_yolov8s.pt" "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/nipples_yolov8s.pt" "bbox_nipples"
-_dl "$MODELS/ultralytics/bbox" "vagina-v4.2.pt" "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/vagina-v4.2.pt" "bbox_vagina"
-_dl "$MODELS/ultralytics/bbox" "assdetailer.pt" "https://huggingface.co/gazsuv/xmode/resolve/main/assdetailer.pt" "bbox_ass"
-_dl "$MODELS/ultralytics/bbox" "Eyeful_v2-Paired.pt" "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyeful_v2-Paired.pt" "bbox_eyes_v2"
-_dl "$MODELS/ultralytics/bbox" "Eyes.pt" "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/Eyes.pt" "bbox_eyes"
-_dl "$MODELS/ultralytics/bbox" "FacesV1.pt" "https://huggingface.co/gazsuv/pussydetectorv4/resolve/main/FacesV1.pt" "bbox_faces"
-_dl "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" "bbox_hand"
-_dl "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt" "bbox_foot"
-
-# QWEN3 VL (13)
-_QWEN_DIR="$MODELS/LLM/Qwen3-VL-4B-Instruct-heretic-7refusal"
-_QWEN_BASE="https://huggingface.co/svjack/Qwen3-VL-4B-Instruct-heretic-7refusal/resolve/main"
-_dl "$_QWEN_DIR" "added_tokens.json"            "$_QWEN_BASE/added_tokens.json"            "qwen_added"
-_dl "$_QWEN_DIR" "chat_template.jinja"          "$_QWEN_BASE/chat_template.jinja"          "qwen_chat"
-_dl "$_QWEN_DIR" "config.json"                  "$_QWEN_BASE/config.json"                  "qwen_config"
-_dl "$_QWEN_DIR" "generation_config.json"       "$_QWEN_BASE/generation_config.json"       "qwen_gen"
-_dl "$_QWEN_DIR" "merges.txt"                   "$_QWEN_BASE/merges.txt"                   "qwen_merges"
-_dl "$_QWEN_DIR" "model.safetensors.index.json" "$_QWEN_BASE/model.safetensors.index.json" "qwen_idx"
-_dl "$_QWEN_DIR" "preprocessor_config.json"     "$_QWEN_BASE/preprocessor_config.json"     "qwen_pre"
-_dl "$_QWEN_DIR" "special_tokens_map.json"      "$_QWEN_BASE/special_tokens_map.json"      "qwen_spc"
-_dl "$_QWEN_DIR" "tokenizer.json"               "$_QWEN_BASE/tokenizer.json"               "qwen_tok"
-_dl "$_QWEN_DIR" "tokenizer_config.json"        "$_QWEN_BASE/tokenizer_config.json"        "qwen_tokcfg"
-_dl "$_QWEN_DIR" "vocab.json"                   "$_QWEN_BASE/vocab.json"                   "qwen_vocab"
-_dl "$_QWEN_DIR" "model-00001-of-00002.safetensors" "$_QWEN_BASE/model-00001-of-00002.safetensors" "qwen_shard1"
-_dl "$_QWEN_DIR" "model-00002-of-00002.safetensors" "$_QWEN_BASE/model-00002-of-00002.safetensors" "qwen_shard2"
-
-# SEEDVR2 (2)
-_dl "$MODELS/SEEDVR2" "seedvr2_ema_7b_sharp_fp16.safetensors" \
-    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors" "seedvr2_dit"
-_dl "$MODELS/SEEDVR2" "ema_vae_fp16.safetensors" \
-    "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors" "seedvr2_vae"
-
+echo "[PROGRESS: 88]"
 echo "[OFM-INNER] ✓ Phase C model downloads complete"
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  PHASE C.5 — hf_hub_download for XET-broken models + PATH FIXES
-# ═══════════════════════════════════════════════════════════════════════════
-echo -e "\n━━━ Phase C.5: XET fallback + path fixes ━━━"
-
-# Force-download XET-broken models using raw Python requests.
-# hf_hub_download fails without hf_xet. aria2c writes garbage for XET repos.
-# Only download if _dl failed. Never delete existing files.
-_hf_fix() {
-    local dir="$1" file="$2" url="$3" label="$4"
-    if [ -f "$dir/$file" ] && [ "$(stat -c%s "$dir/$file" 2>/dev/null || echo 0)" -gt 1024 ]; then
-        echo "  [ok] $label ($(stat -c%s "$dir/$file") bytes)"
-        return 0
-    fi
-    echo "[OFM-INNER] Downloading $label..."
-    mkdir -p "$dir"
-    python3 << PYEOF
-import os, sys
-try:
-    import requests
-except ImportError:
-    import subprocess
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', 'requests'])
-    import requests
-url = "$url"
-dest = "$dir/$file"
-print(f"  GET {url}")
-try:
-    r = requests.get(url, allow_redirects=True, stream=True, timeout=300)
-    r.raise_for_status()
-    with open(dest, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=1048576):
-            f.write(chunk)
-    print(f"  OK: {os.path.getsize(dest)} bytes")
-except Exception as e:
-    print(f"  FAILED: {e}", file=sys.stderr)
-    if os.path.exists(dest): os.remove(dest)
-PYEOF
-    if [ ! -f "$dir/$file" ] || [ ! -s "$dir/$file" ]; then
-        wget -q -O "$dir/$file" "$url" 2>/dev/null || true
-    fi
-    [ -f "$dir/$file" ] && [ -s "$dir/$file" ] && echo "  [✓] $label: $(stat -c%s "$dir/$file") bytes"
-}
-
-_hf_fix "$MODELS/ultralytics/bbox" "face_yolov8s.pt" \
-    "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8s.pt?download=true" "face_yolov8s"
-_hf_fix "$MODELS/ultralytics/bbox" "hand_yolov8s.pt" \
-    "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt?download=true" "hand_yolov8s"
-_hf_fix "$MODELS/sams" "sam_vit_b_01ec64.pth" \
-    "https://huggingface.co/ybelkada/segment-anything/resolve/main/checkpoints/sam_vit_b_01ec64.pth?download=true" "sam_vit_b"
-_hf_fix "$MODELS/detection" "vitpose_h_wholebody_model.onnx" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx?download=true" "vitpose_model"
-_hf_fix "$MODELS/detection" "vitpose_h_wholebody_data.bin" \
-    "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin?download=true" "vitpose_data"
-_hf_fix "$MODELS/detection" "yolov10m.onnx" \
-    "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx?download=true" "yolov10m"
-_hf_fix "$MODELS/ultralytics/bbox" "foot-yolov8l.pt" \
-    "https://huggingface.co/AunyMoons/loras-pack/resolve/main/foot-yolov8l.pt?download=true" "foot_yolov8l"
-
-# Path fixes: copy models to alternate locations workflows may reference
-mkdir -p "$MODELS/checkpoints" "$MODELS/checkpoints/bbox"
-[ -f "$MODELS/upscale_models/4xUltrasharp_4xUltrasharpV10.pt" ] && cp "$MODELS/upscale_models/4xUltrasharp_4xUltrasharpV10.pt" "$MODELS/checkpoints/" 2>/dev/null
-for _f in Eyeful_v2-Paired.pt face_yolov8s.pt hand_yolov8s.pt assdetailer.pt female_breast-v4.2.pt vagina-v4.2.pt FacesV1.pt Eyes.pt foot-yolov8l.pt nipples_yolov8s.pt femaleBodyDetection_yolo26.pt; do
-    [ -f "$MODELS/ultralytics/bbox/$_f" ] && cp "$MODELS/ultralytics/bbox/$_f" "$MODELS/checkpoints/bbox/" 2>/dev/null
-done
-for _f in gpu.safetensors real.safetensors XXX.safetensors detect.safetensors; do
-    [ -f "$MODELS/loras/$_f" ] && cp "$MODELS/loras/$_f" "$MODELS/checkpoints/" 2>/dev/null
-    [ -f "$MODELS/checkpoints/$_f" ] && true  # already there
-done
-# Ensure detect.safetensors is in checkpoints (downloaded to checkpoints directly)
-echo "[OFM-INNER] ✓ Path fixes applied"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -502,54 +396,13 @@ cat > "$SETTINGS_DIR/comfy.settings.json" << 'SETTINGSJSON'
 SETTINGSJSON
 echo "[OFM-INNER] ✓ Settings written"
 
-# Impact Subpack model whitelist — without this, .pt models refuse to load
-# (PyTorch weights_only=True security, Impact Pack V1.3.5+)
-_WL_DIR="$SETTINGS_DIR/ComfyUI-Impact-Subpack"
-mkdir -p "$_WL_DIR"
-cat > "$_WL_DIR/model-whitelist.txt" << 'WHITELIST'
-face_yolov8s.pt
-hand_yolov8s.pt
-foot-yolov8l.pt
-femaleBodyDetection_yolo26.pt
-female_breast-v4.2.pt
-nipples_yolov8s.pt
-vagina-v4.2.pt
-assdetailer.pt
-Eyeful_v2-Paired.pt
-Eyes.pt
-FacesV1.pt
-sam_vit_b_01ec64.pth
-4xUltrasharp_4xUltrasharpV10.pt
-WHITELIST
-echo "[OFM-INNER] ✓ Impact Subpack whitelist written ($(wc -l < "$_WL_DIR/model-whitelist.txt") models)"
-
-# ComfyUI-Manager config: disable missing model popup on workflow open
-# Path is user/__manager NOT user/default/__manager
-_MGR_DIR="$COMFYUI_DIR/user/__manager"
-mkdir -p "$_MGR_DIR"
-if [ ! -f "$_MGR_DIR/config.ini" ]; then
-    cat > "$_MGR_DIR/config.ini" << 'MGRCONF'
-[default]
-check_missing_models = none
-MGRCONF
-    echo "[OFM-INNER] ✓ Manager config: check_missing_models=none"
-else
-    # Patch existing config
-    if grep -q "check_missing_models" "$_MGR_DIR/config.ini"; then
-        sed -i 's/check_missing_models.*/check_missing_models = none/' "$_MGR_DIR/config.ini"
-    else
-        echo "check_missing_models = none" >> "$_MGR_DIR/config.ini"
-    fi
-    echo "[OFM-INNER] ✓ Manager config patched: check_missing_models=none"
-fi
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  PHASE F — INVENTORY REPORT
 # ═══════════════════════════════════════════════════════════════════════════
 echo -e "\n━━━ Phase F: Inventory ━━━"
 _total_files=0
-for _d in diffusion_models diffusion_models/InfiniteTalk text_encoders clip_vision vae controlnet loras checkpoints sams upscale_models detection ultralytics/bbox LLM SEEDVR2; do
+for _d in diffusion_models diffusion_models/InfiniteTalk text_encoders clip clip_vision vae controlnet loras ckpt sams upscale_models detection ultralytics/bbox unet model_patches prompt_generator SEEDVR2; do
     _p="$MODELS/$_d"
     [ -d "$_p" ] || continue
     _n=$(find "$_p" -maxdepth 1 -type f 2>/dev/null | wc -l)
