@@ -132,7 +132,7 @@ echo "[OFM-INNER] ✓ Extra pip packages done"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  PHASE B — INSTALL CUSTOM NODES (26)
+#  PHASE B — INSTALL CUSTOM NODES (29)
 # ═══════════════════════════════════════════════════════════════════════════
 
 mkdir -p "$CUSTOM_NODES_DIR"
@@ -142,7 +142,7 @@ if ! cd "$CUSTOM_NODES_DIR"; then
 else
     echo "[OFM-INNER] Working dir: $(pwd)"
     _NODE_IDX=0
-    _NODE_TOTAL=26
+    _NODE_TOTAL=29
 
     _install_node() {
         local name="$1" url="$2"
@@ -193,6 +193,11 @@ else
     _install_node "audio-separation-nodes-comfyui"  "https://github.com/christian-byrne/audio-separation-nodes-comfyui"
     _install_node "comfy-mtb"                       "https://github.com/melMass/comfy_mtb"
 
+    # ── I2V_NSFW-only nodes ──
+    _install_node "ComfyUI-VFI"                     "https://github.com/GACLove/ComfyUI-VFI"
+    _install_node "ComfyUI-PainterI2V"              "https://github.com/LDNKS094/ComfyUI-PainterI2V"
+    _install_node "ComfyUI-VideoUpscaler"           "https://github.com/ShmuelRonen/ComfyUI-VideoUpscaler"
+
     # ── Private ──
     _install_node "comfyui-closer-tool"             "https://github.com/st4vz/comfyui-closer-tool"
 
@@ -200,6 +205,12 @@ else
     if [ -f "$KJ" ] && grep -q "search_aliases" "$KJ" 2>/dev/null; then
         sed -i 's/search_aliases=\[.*\],\?//g' "$KJ"
         echo "[OFM-INNER] ✓ KJNodes search_aliases fix applied"
+    fi
+
+    # SAM3 needs comfy-env install for pixi environment
+    if [ -d "$CUSTOM_NODES_DIR/ComfyUI-SAM3" ] && [ -f "$CUSTOM_NODES_DIR/ComfyUI-SAM3/install.py" ]; then
+        echo "[OFM-INNER] Running SAM3 install.py (comfy-env setup)..."
+        (cd "$CUSTOM_NODES_DIR/ComfyUI-SAM3" && timeout 300 python3 install.py 2>&1 | tail -5) || echo "[OFM-INNER] ⚠ SAM3 install.py failed (non-fatal)"
     fi
 
     INSTALLED_NODES=$(ls -1 "$CUSTOM_NODES_DIR" 2>/dev/null | wc -l)
@@ -296,8 +307,8 @@ _add "$MODELS/vae" "Wan2_1_VAE_bf16.safetensors" \
     "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors"
 _add "$MODELS/diffusion_models" "Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors" \
     "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors"
-_add "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors"
+_add "$MODELS/diffusion_models/InfiniteTalk" "Wan2_1-InfiniteTalk-Single_fp16.safetensors" \
+    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp16.safetensors"
 
 # ── Fire aria2c ──
 if [ -f "$_MANIFEST" ] && [ -s "$_MANIFEST" ]; then
@@ -305,17 +316,19 @@ if [ -f "$_MANIFEST" ] && [ -s "$_MANIFEST" ]; then
     echo "[OFM-INNER] aria2c: $_QUEUED files queued"
     aria2c \
         --input-file="$_MANIFEST" \
-        --max-concurrent-downloads=6 \
-        --split=16 \
+        --max-concurrent-downloads=10 \
+        --split=32 \
         --max-connection-per-server=16 \
-        --min-split-size=10M \
+        --min-split-size=5M \
         --continue=true \
-        --retry-wait=3 \
+        --retry-wait=2 \
         --max-tries=5 \
-        --timeout=60 \
-        --connect-timeout=15 \
+        --timeout=120 \
+        --connect-timeout=10 \
         --allow-overwrite=false \
         --auto-file-renaming=false \
+        --file-allocation=none \
+        --optimize-concurrent-downloads=true \
         --console-log-level=warn \
         --summary-interval=30 \
         2>&1 | grep -v "^$" || true
