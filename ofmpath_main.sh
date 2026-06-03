@@ -16,7 +16,7 @@ export OFMPATH_BUCKET="ofm-path"
 OFMPATH_PRODUCT="${OFMPATH_PRODUCT:-all}"
 case "$OFMPATH_PRODUCT" in
     img) PRODUCT_LABEL="IMAGE TOOLS"; TOTAL_MODELS=42; TOTAL_NODES=21 ;;
-    vid) PRODUCT_LABEL="VIDEO TOOLS"; TOTAL_MODELS=26; TOTAL_NODES=26 ;;
+    vid) PRODUCT_LABEL="VIDEO TOOLS"; TOTAL_MODELS=26; TOTAL_NODES=29 ;;
     *)   PRODUCT_LABEL="OFM PATH";    TOTAL_MODELS=57; TOTAL_NODES=28 ;;
 esac
 export OFMPATH_PRODUCT
@@ -48,580 +48,235 @@ _start_preloader() {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OFM PATH — Initializing...</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { height:100%; overflow:hidden; }
-  body { background:#0a0a0a; color:#f0e6cf; font-family:'JetBrains Mono','Courier New',monospace;
-         display:flex; justify-content:center; align-items:center; height:100vh;
-         position:relative; padding:clamp(8px, 2vh, 32px) 16px; }
-  body::before { content:''; position:fixed; inset:0; pointer-events:none; z-index:2;
-                 background:repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0,rgba(0,0,0,.35) 1px,transparent 1px,transparent 3px); }
-  body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:1;
-                background:radial-gradient(ellipse at 50% 50%, rgba(240,230,207,0.04) 0%, transparent 65%); }
-  .wrap { position:relative; z-index:10; max-width:780px; width:100%;
-          max-height:calc(100vh - clamp(16px, 4vh, 64px));
-          overflow-y:auto;
-          padding:clamp(16px, 3vh, 48px) clamp(20px, 4vw, 50px) clamp(16px, 2.5vh, 44px);
-          background:rgba(15,12,8,0.7); border:1px solid rgba(240,230,207,0.18); border-radius:4px;
-          backdrop-filter:blur(8px);
-          box-shadow:0 0 60px rgba(240,230,207,0.05), inset 0 0 0 1px rgba(240,230,207,0.06);
-          animation:slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-          display:flex; flex-direction:column; }
-  .wrap::-webkit-scrollbar { width:4px; }
-  .wrap::-webkit-scrollbar-thumb { background:rgba(240,230,207,0.15); border-radius:2px; }
-  @keyframes slideUp { from { opacity:0; transform:translateY(16px);} to { opacity:1; transform:translateY(0);} }
-  .brand { text-align:center; font-size:12px; letter-spacing:5px; color:#f0e6cf; opacity:.6; margin-bottom:clamp(6px, 1vh, 14px); }
-  pre.ascii { font-size:clamp(8px, 1.4vh, 14px); line-height:1.25; color:#faf1d6;
-              text-shadow:0 0 10px rgba(255,245,221,.35); margin:0 0 clamp(10px, 2vh, 24px); white-space:pre; text-align:center;
-              font-family:'JetBrains Mono','Courier New',monospace; }
-  .version { text-align:center; font-size:11px; color:#f0e6cf; opacity:.5; letter-spacing:4px; margin-bottom:clamp(12px, 2.5vh, 32px); text-transform:uppercase; }
-  .header-row { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; margin-bottom:clamp(8px, 1.2vh, 14px); }
-  .header-row .status-badge { grid-column:2; justify-self:center; }
-  .header-row .elapsed { grid-column:3; justify-self:end; }
-  .status-badge { display:inline-flex; align-items:center; gap:10px; padding:clamp(6px, 1vh, 10px) 20px;
-                  background:rgba(240,230,207,0.05); border:1px solid rgba(240,230,207,0.22); border-radius:3px;
-                  font-size:13px; color:#faf1d6; letter-spacing:0.4px; }
-  .dot { width:8px; height:8px; border-radius:50%; background:#f5efd6;
-         animation:dotPulse 1.3s infinite; box-shadow:0 0 8px #f5efd6; }
-  @keyframes dotPulse { 0%,100% { transform:scale(.8); opacity:.6;} 50% { transform:scale(1.25); opacity:1;} }
-  .elapsed { font-family:'JetBrains Mono',monospace; font-size:12px; color:rgba(240,230,207,0.7); letter-spacing:1px; }
-  .bar-track { width:100%; height:6px; background:rgba(240,230,207,0.08); border-radius:3px;
-               overflow:hidden; margin-bottom:8px; box-shadow:inset 0 0 0 1px rgba(240,230,207,0.15); }
-  .bar-fill { height:100%; width:0%; background:linear-gradient(90deg,#f0e6cf,#faf1d6);
-              transition:width .6s cubic-bezier(0.2,0.8,0.2,1); box-shadow:0 0 10px rgba(240,230,207,0.4); }
-  .bar-label { display:flex; justify-content:space-between; font-size:11px; color:rgba(240,230,207,0.45);
-               letter-spacing:1px; margin-bottom:clamp(12px, 2.5vh, 32px); text-transform:uppercase; }
-  .stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:clamp(8px, 1.5vh, 14px); margin-bottom:clamp(12px, 2vh, 28px); }
-  .stat { background:rgba(240,230,207,0.04); border:1px solid rgba(240,230,207,0.15); border-radius:3px; padding:clamp(10px, 1.6vh, 20px) clamp(12px, 1.6vw, 18px); }
-  .stat-label { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:clamp(4px, 0.8vh, 10px); }
-  .stat-value { font-size:clamp(20px, 3.5vh, 30px); color:#faf1d6; font-weight:600; line-height:1; }
-  .stat-value .sub { font-size:14px; color:rgba(240,230,207,0.4); }
-  .stat-hint { font-size:10px; color:rgba(240,230,207,0.4); margin-top:8px; letter-spacing:0.5px; }
-  .panel { background:rgba(240,230,207,0.03); border:1px dashed rgba(240,230,207,0.22); border-radius:3px;
-           padding:clamp(10px, 1.6vh, 20px) clamp(14px, 1.8vw, 22px); margin-bottom:clamp(10px, 1.6vh, 20px); }
-  .panel-label { font-size:11px; color:rgba(240,230,207,0.55); letter-spacing:2px; text-transform:uppercase; margin-bottom:clamp(8px, 1.4vh, 18px); }
-  .ladder { display:flex; gap:8px; font-size:11px; }
-  .rung { flex:1; padding:clamp(6px, 1vh, 14px) 6px; text-align:center; border-radius:3px; transition:all 0.4s; }
-  .rung.future { background:rgba(240,230,207,0.05); color:rgba(240,230,207,0.5); border:1px solid rgba(240,230,207,0.15); }
-  .rung.done { background:rgba(240,230,207,0.12); color:#0a0a0a; font-weight:600; }
-  .rung.active { background:rgba(240,230,207,0.28); color:#0a0a0a; font-weight:600; box-shadow:0 0 10px rgba(240,230,207,0.3); }
-  .rung .code { font-size:9px; letter-spacing:1.5px; opacity:0.6; display:block; margin-bottom:5px; }
-  .rung.done .code, .rung.active .code { color:rgba(10,10,10,0.6); opacity:1; }
-  .weights-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-  .weights-count { font-size:10px; color:rgba(240,230,207,0.55); letter-spacing:1.5px; text-transform:uppercase; }
-  .weights-speed { font-size:10px; color:#faf1d6; letter-spacing:0.5px; }
-  .blocks { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:clamp(8px, 1.2vh, 14px); }
-  .block { width:14px; height:14px; border-radius:2px;
-           background:rgba(240,230,207,0.06); border:1px solid rgba(240,230,207,0.2); transition:all 0.3s; }
-  .block.filled { background:#f0e6cf; border-color:#f0e6cf; box-shadow:0 0 6px rgba(240,230,207,0.45); }
-  .block.loading { background:rgba(240,230,207,0.2); border-color:rgba(240,230,207,0.4); animation:dotPulse 1.3s infinite; }
-  .block.failed { background:rgba(201,122,95,0.25); border-color:rgba(201,122,95,0.6); }
-  .current-file { font-size:10px; color:rgba(250,241,214,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .footer { text-align:center; font-size:11px; color:rgba(240,230,207,0.25); letter-spacing:4px; margin-top:clamp(14px, 2.5vh, 32px); text-transform:uppercase; }
-  .error-state .bar-fill { background:#c97a5f !important; box-shadow:0 0 10px #c97a5f; }
-  .error-state .status-badge { color:#c97a5f; border-color:rgba(201,122,95,0.4); }
-  .error-state .dot { background:#c97a5f; box-shadow:0 0 8px #c97a5f; }
-  .snake-panel { background:rgba(240,230,207,0.03); border:1px solid rgba(240,230,207,0.18); border-radius:3px;
-                 padding:clamp(10px, 1.6vh, 20px) clamp(14px, 1.8vw, 22px); margin-bottom:clamp(10px, 1.6vh, 20px); text-align:center; }
-  .snake-panel .panel-label { margin-bottom:clamp(6px, 1vh, 12px); }
-  #snake-canvas { display:block; margin:0 auto; image-rendering:pixelated; border:1px solid rgba(240,230,207,0.12);
-                  background:#080604; border-radius:2px; max-width:100%; }
-  .snake-info { display:flex; justify-content:center; gap:16px; margin-top:8px; font-size:10px; color:rgba(240,230,207,0.5); letter-spacing:1px; }
-  .snake-info .score-val { color:#faf1d6; font-weight:600; }
-  @media (max-width: 540px) {
-    .stats { grid-template-columns:repeat(2,1fr); }
-    .ladder { flex-wrap:wrap; }
-    .rung { min-width:45px; }
-  }
-  @media (max-height: 720px) {
-    pre.ascii { display:none; }
-    .version { margin-bottom:14px; }
-  }
-  @media (max-height: 560px) {
-    .brand, .footer { display:none; }
-    .stat-value { font-size:18px; }
-    .stat-value .sub { font-size:11px; }
-    .stat { padding:8px 12px; }
-    .stat-label { margin-bottom:4px; }
-    .panel { padding:10px 14px; margin-bottom:8px; }
-    .header-row { margin-bottom:8px; }
-    .stats { margin-bottom:10px; }
-    .bar-label { margin-bottom:10px; }
-    .snake-panel { display:none; }
-  }
-  @media (max-height: 440px) {
-    .panel, .ladder { display:none; }
-    .stats { display:none; }
-    .version { display:none; }
-    .snake-panel { display:none; }
-  }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OFMPATH — Initializing...</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #fff0f5 0%, #ffe4e1 100%);
+            color: #5c404b;
+            font-family: 'Outfit', system-ui, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; overflow: hidden; position: relative;
+        }
+        .ambient { position: absolute; width: 800px; height: 800px; border-radius: 50%;
+                    background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, transparent 70%);
+                    animation: drift 15s infinite alternate ease-in-out; pointer-events: none; z-index: 0; }
+        .ambient.one { top: -200px; left: -200px; opacity: 0.6; }
+        .ambient.two { bottom: -200px; right: -100px; opacity: 0.4; animation-duration: 25s; animation-direction: alternate-reverse; }
+        @keyframes drift { 0% { transform: translateY(0) scale(1); } 100% { transform: translateY(50px) scale(1.1); } }
+        canvas#sakura { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        .container {
+            position: relative; z-index: 10; max-width: 580px; width: 90%; padding: 48px;
+            background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 32px;
+            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            box-shadow: 0 20px 60px rgba(200, 160, 170, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+            transform: translateY(20px); opacity: 0;
+            animation: slideUp 1s 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes slideUp { to { transform: translateY(0); opacity: 1; } }
+        .logo-icon {
+            width: 64px; height: 64px; background: linear-gradient(135deg, #FFB7C5, #ff8da1);
+            border-radius: 20px; display: flex; align-items: center; justify-content: center;
+            font-size: 32px; margin-bottom: 24px;
+            box-shadow: 0 12px 30px rgba(255, 183, 197, 0.5), inset 0 2px 0 rgba(255,255,255,0.4);
+            animation: pulseIcon 4s infinite alternate ease-in-out;
+        }
+        @keyframes pulseIcon { 0% { transform: scale(1); box-shadow: 0 12px 30px rgba(255,183,197,0.5); } 100% { transform: scale(1.05); box-shadow: 0 16px 40px rgba(255,183,197,0.7); } }
+        h1 { font-size: 28px; font-weight: 600; letter-spacing: 1px; color: #4a2e37; margin-bottom: 8px; }
+        .version-badge { font-size: 11px; font-weight: 700; color: #ff8da1; background: rgba(255,255,255,0.8);
+                         border: 1px solid rgba(255,183,197,0.5); padding: 4px 10px; border-radius: 20px;
+                         letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 32px; }
+        .status-badge { display: inline-flex; align-items: center; gap: 10px; padding: 8px 18px;
+                        background: rgba(255,255,255,0.6); border: 1px solid rgba(255,183,197,0.4);
+                        border-radius: 100px; font-size: 14px; font-weight: 500; color: #6d4b57;
+                        margin-bottom: 24px; box-shadow: 0 4px 12px rgba(200,160,170,0.1); }
+        .status-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff8da1; animation: dotPop 1.5s infinite; }
+        @keyframes dotPop { 0%,100% { transform: scale(0.8); opacity: 0.6; } 50% { transform: scale(1.3); opacity: 1; } }
+        .progress-container { width: 100%; margin-bottom: 30px; }
+        .progress-track { width: 100%; height: 6px; background: rgba(255,255,255,0.5); border-radius: 10px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.02); position: relative; }
+        .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffb7c5, #ff8da1); border-radius: 10px; transition: width 0.6s cubic-bezier(0.2,0.8,0.2,1); position: relative; }
+        .progress-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent); transform: translateX(-100%); animation: shimmer 2s infinite; }
+        @keyframes shimmer { 100% { transform: translateX(100%); } }
+        .status-line { font-size: 13px; color: #8c6a77; margin-bottom: 20px; height: 20px; transition: all 0.3s ease; }
+        .download-zone { width: 100%; background: rgba(255,255,255,0.3); border: 1px dashed rgba(255,183,197,0.6);
+                         border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px; }
+        .download-header { font-size: 12px; font-weight: 500; color: #6d4b57; display: flex; justify-content: space-between; }
+        .blocks-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; }
+        .block { width: 18px; height: 18px; border-radius: 4px; background: rgba(255,255,255,0.6);
+                 border: 1px solid rgba(255,183,197,0.4); transition: all 0.4s cubic-bezier(0.2,0.8,0.2,1); position: relative; overflow: hidden; }
+        .block.filled { background: #ffb7c5; border-color: #ff8da1; box-shadow: 0 0 10px rgba(255,133,161,0.3); transform: scale(1.05); }
+        .block.loading::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 50%; background: rgba(255,133,161,0.4); animation: fillUp 1s infinite alternate; }
+        @keyframes fillUp { 0% { height: 10%; } 100% { height: 90%; } }
+        .footer-text { font-size: 11px; color: #bfa0a9; letter-spacing: 1px; text-transform: uppercase; margin-top: 10px; }
+        .error-state .progress-fill { background: #ff6b6b; }
+        .error-state .status-badge { background: rgba(255,107,107,0.1); border-color: #ff6b6b; color: #ff6b6b; }
+        .error-state .status-badge .dot { background: #ff6b6b; }
+        #refresh-prompt { display: none; margin-top: 20px; animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .btn { background: linear-gradient(135deg, #ff8da1, #ff6b84); color: white; border: none; padding: 12px 32px;
+               border-radius: 100px; font-size: 14px; font-weight: 600; cursor: pointer;
+               box-shadow: 0 8px 20px rgba(255,107,132,0.3); transition: all 0.2s ease; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 25px rgba(255,107,132,0.4); }
+    </style>
 </head>
 <body>
-  <div class="wrap" id="main">
-    <div class="brand">OFMPATH.COM</div>
-    <pre class="ascii">
- ██████╗ ███████╗███╗   ███╗    ██████╗  █████╗ ████████╗██╗  ██╗
-██╔═══██╗██╔════╝████╗ ████║    ██╔══██╗██╔══██╗╚══██╔══╝██║  ██║
-██║   ██║█████╗  ██╔████╔██║    ██████╔╝███████║   ██║   ███████║
-██║   ██║██╔══╝  ██║╚██╔╝██║    ██╔═══╝ ██╔══██║   ██║   ██╔══██║
-╚██████╔╝██║     ██║ ╚═╝ ██║    ██║     ██║  ██║   ██║   ██║  ██║
- ╚═════╝ ╚═╝     ╚═╝     ╚═╝    ╚═╝     ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝</pre>
-    <div class="version">V1 · OFM PATH</div>
-
-    <div class="header-row">
-      <div class="status-badge">
-        <span class="dot"></span><span id="status-text">Initializing environment...</span>
-      </div>
-      <div class="elapsed" id="elapsed">00:00</div>
+    <div class="ambient one"></div>
+    <div class="ambient two"></div>
+    <canvas id="sakura"></canvas>
+    <div class="container" id="main">
+        <div class="logo-icon">🌸</div>
+        <h1>OFM PATH</h1>
+        <div class="version-badge">V1 · OFM PATH</div>
+        <div class="status-badge" id="status-badge">
+            <span class="dot"></span>
+            <span id="status-text">Initializing environment</span>
+        </div>
+        <div class="progress-container">
+            <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
+        </div>
+        <div class="status-line" id="status-line">Connecting to OFMPATH servers...</div>
+        <div style="margin-bottom: 16px; border-radius: 12px; overflow: hidden; background: rgba(0,0,0,0.03); border: 1px solid rgba(255,107,132,0.15); padding: 12px; text-align: center;">
+            <canvas id="snakeGame" width="520" height="300" style="background: rgba(74,46,55,0.06); border-radius: 8px; border: 1px solid rgba(255,107,132,0.15); display: block; margin: 0 auto; max-width: 100%;"></canvas>
+            <div id="snake-score" style="font-size: 12px; color: #ff8da1; font-weight: 600; margin-top: 8px;">🌸 0</div>
+            <div style="font-size: 10px; color: rgba(140,106,119,0.5); margin-top: 4px; letter-spacing: 1px; text-transform: uppercase;">← → ↑ ↓ control • awaiting deployment...</div>
+        </div>
+        <div class="download-zone" id="model-tracker" style="display:none;">
+            <div class="download-header">
+                <span>⬡ Loading weights: <span id="model-count">0 / 0</span></span>
+                <span id="download-speed"></span>
+            </div>
+            <div class="blocks-grid" id="blocks-grid"></div>
+            <div id="model-current" style="font-size: 10px; color: rgba(140,106,119,0.4); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">▸ Awaiting...</div>
+        </div>
+        <div id="refresh-prompt">
+            <p style="color:#6d4b57; font-size:13px; margin-bottom:12px; font-weight:500;">Deployment complete</p>
+            <button class="btn" onclick="location.reload()">Launch Interface</button>
+        </div>
+        <div class="footer-text">SECURE DEPLOYMENT · OFM PATH</div>
     </div>
-
-    <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
-    <div class="bar-label">
-      <span></span>
-      <span id="pct-text">0%</span>
-    </div>
-
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-label">Nodes</div>
-        <div class="stat-value"><span id="nodes-done">0</span><span class="sub">/<span id="nodes-total">28</span></span></div>
-        <div class="stat-hint">installed</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Models</div>
-        <div class="stat-value"><span id="models-done">0</span><span class="sub">/<span id="models-total">57</span></span></div>
-        <div class="stat-hint">synced</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">ETA</div>
-        <div class="stat-value"><span id="eta">&mdash;</span></div>
-        <div class="stat-hint">remaining</div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-label">Pipeline</div>
-      <div class="ladder" id="ladder">
-        <div class="rung future" data-phase="INIT"><span class="code">1</span>Initializing</div>
-        <div class="rung future" data-phase="B"><span class="code">2</span>Nodes</div>
-        <div class="rung future" data-phase="C"><span class="code">3</span>Models</div>
-        <div class="rung future" data-phase="D"><span class="code">4</span>Deploy</div>
-      </div>
-    </div>
-
-    <div class="panel" id="weights-panel" style="display:none;">
-      <div class="weights-head">
-        <span class="weights-count">Model weights &middot; <span id="weights-count-text">0 / 49</span></span>
-        <span class="weights-speed" id="weights-speed"></span>
-      </div>
-      <div class="blocks" id="blocks"></div>
-      <div class="current-file" id="current-file">&blacktriangleright; Awaiting...</div>
-    </div>
-
-    <div class="snake-panel" id="snake-panel">
-      <div class="panel-label">Play while you wait &middot; Arrow keys</div>
-      <canvas id="snake-canvas" width="320" height="200"></canvas>
-      <div class="snake-info">
-        <span>Score: <span class="score-val" id="snake-score">0</span></span>
-        <span id="snake-status">Press any arrow key</span>
-      </div>
-    </div>
-
-    <div class="footer">SECURE DEPLOYMENT &middot; OFM PATH</div>
-  </div>
-
 <script>
-(function () {
-  "use strict";
-  document.addEventListener("contextmenu", e => e.preventDefault(), true);
-  document.addEventListener("keydown", e => {
+document.addEventListener("contextmenu", e => e.preventDefault(), true);
+document.addEventListener("keydown", e => {
     const k = e.key ? e.key.toLowerCase() : "";
-    if (e.key === "F12" || (e.ctrlKey && e.shiftKey && "ijc".includes(k)) || (e.ctrlKey && k === "u")) e.preventDefault();
-  }, true);
-
-  const startTs = Date.now();
-  function fmtDur(ms) {
-    const s = Math.max(0, Math.floor(ms / 1000));
-    const m = Math.floor(s / 60), ss = s % 60;
-    return String(m).padStart(2,'0') + ":" + String(ss).padStart(2,'0');
-  }
-  setInterval(() => {
-    document.getElementById("elapsed").textContent = fmtDur(Date.now() - startTs);
-  }, 1000);
-
-  const TOTAL_MODELS = 57;
-  const blocksWrap = document.getElementById("blocks");
-  for (let i = 0; i < TOTAL_MODELS; i++) {
-    const c = document.createElement("div");
-    c.className = "block"; c.id = "wb-" + i;
-    blocksWrap.appendChild(c);
-  }
-
-  const PHASE_ORDER = ["INIT","B","C","D"];
-  function mapPhase(internal) {
-    if (internal === "A") return "INIT";
-    if (internal === "B") return "B";
-    if (internal === "C") return "C";
-    if (internal === "D" || internal === "E" || internal === "F") return "D";
-    return "INIT";
-  }
-  function setPhase(active) {
-    const uiPhase = mapPhase(active);
-    const idx = PHASE_ORDER.indexOf(uiPhase);
-    document.querySelectorAll(".rung").forEach(r => {
-      const p = r.getAttribute("data-phase");
-      const pidx = PHASE_ORDER.indexOf(p);
-      r.classList.remove("future","done","active");
-      if (pidx < idx) r.classList.add("done");
-      else if (pidx === idx) r.classList.add("active");
-      else r.classList.add("future");
-    });
-  }
-
-  const state = {
-    nodesDone: 0, modelsDone: 0, modelsFailed: 0,
-    pct: 0, phase: null,
-    currentModel: null,
-    lastLogSize: 0,
-    recentBytesPerSec: 0,
-    lastModelTs: null, lastModelLabel: null,
-    loggedLines: new Set(),
-    handoffStarted: false,
-  };
-
-  function nowHHMM() {
-    const d = new Date();
-    return String(d.getHours()).padStart(2,'0') + ":" + String(d.getMinutes()).padStart(2,'0');
-  }
-
-  setInterval(async () => {
-    try {
-      const r = await fetch("ready?t=" + Date.now());
-      if (r.ok && (await r.text()).trim() === "READY" && !state.handoffStarted) {
-        state.handoffStarted = true; startHandoff();
-      }
-    } catch (_) {}
-  }, 2000);
-
-  function startHandoff() {
-    document.getElementById("bar").style.width = "100%";
-    document.getElementById("pct-text").textContent = "100%";
-    document.getElementById("status-text").textContent = "Starting ComfyUI...";
-    document.getElementById("weights-speed").textContent = "";
-    document.getElementById("snake-panel").style.display = "none";
-    setPhase("F");
-    document.querySelectorAll(".rung").forEach(r => {
-      r.classList.remove("future","active"); r.classList.add("done");
-    });
-    const ping = setInterval(async () => {
-      try {
-        const r = await fetch("/?_t=" + Date.now(), { cache: "no-store" });
-        if (r.ok) {
-          const html = await r.text();
-          if (html.includes("comfyui") || html.includes("litegraph") || html.length > 5000) { clearInterval(ping); location.reload(); }
-        }
-      } catch (_) {}
-    }, 1500);
-  }
-
-  async function poll() {
-    try {
-      const res = await fetch("install.log?t=" + Date.now());
-      if (!res.ok) return;
-      const text = await res.text();
-      if (text.length === state.lastLogSize) return;
-      state.lastLogSize = text.length;
-
-      const lines = text.split("\n");
-
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const m = lines[i].match(/Phase\s+([A-F])\s*:/);
-        if (m) { state.phase = m[1]; break; }
-      }
-      if (state.phase) setPhase(state.phase);
-
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const m = lines[i].match(/\[PROGRESS:\s*(\d+)\]/);
-        if (m) { state.pct = parseInt(m[1]); break; }
-      }
-      if (state.pct > 0) {
-        document.getElementById("bar").style.width = state.pct + "%";
-        document.getElementById("pct-text").textContent = state.pct + "%";
-      }
-
-      let lastNodeIdx = 0;
-      let nodesTotal = 0;
-      for (const l of lines) {
-        const m = l.match(/\((\d+)\/(\d+)\)/);
-        if (m) {
-          const idx = parseInt(m[1]);
-          const tot = parseInt(m[2]);
-          if (tot >= 10 && tot <= 100) {
-            lastNodeIdx = Math.max(lastNodeIdx, idx);
-            nodesTotal = Math.max(nodesTotal, tot);
-          }
-        }
-      }
-      state.nodesDone = lastNodeIdx;
-      document.getElementById("nodes-done").textContent = lastNodeIdx;
-      if (nodesTotal > 0) {
-        const denomEl = document.getElementById("nodes-total");
-        if (denomEl) denomEl.textContent = nodesTotal;
-      }
-
-      let modelsTotal = TOTAL_MODELS;
-      for (const l of lines) {
-        const m = l.match(/Found\s+(\d+)\s+models/);
-        if (m) modelsTotal = parseInt(m[1]);
-      }
-      document.getElementById("models-total").textContent = modelsTotal;
-
-      let successes = 0, failures = 0, currentLabel = null;
-      for (const l of lines) {
-        const startM = l.match(/\[STARTING\]\s*'([^']+)'/);
-        if (startM) currentLabel = startM[1];
-        if (l.includes("[SUCCESS]") && currentLabel) {
-          successes++;
-          currentLabel = null;
-        }
-        if (l.indexOf("[FAILED]") === 0 || l.indexOf("[FAILED] ") === 0 || /^\[FAILED\]/.test(l)) {
-          failures++;
-          currentLabel = null;
-        }
-      }
-      state.modelsDone = successes;
-      state.modelsFailed = failures;
-      state.currentModel = currentLabel;
-
-      const totalForUI = modelsTotal;
-      document.getElementById("models-done").textContent = successes;
-      document.getElementById("weights-count-text").textContent = successes + " / " + totalForUI;
-
-      if (successes + failures > 0) {
-        document.getElementById("weights-panel").style.display = "block";
-      }
-      for (let i = 0; i < totalForUI; i++) {
-        const b = document.getElementById("wb-" + i);
-        if (!b) continue;
-        b.className = "block";
-        if (i < successes) b.classList.add("filled");
-        else if (i === successes && currentLabel) b.classList.add("loading");
-      }
-
-      if (currentLabel) {
-        document.getElementById("current-file").textContent = "\u25b8 " + currentLabel;
-        const nowTs = Date.now();
-        if (state.lastModelTs && state.lastModelLabel !== currentLabel) {
-          const dt = (nowTs - state.lastModelTs) / 1000;
-          const mbps = 512 / Math.max(dt, 2);
-          if (mbps > 0.1 && mbps < 500) state.recentBytesPerSec = mbps;
-        }
-        state.lastModelTs = state.lastModelTs || nowTs;
-        state.lastModelLabel = currentLabel;
-        if (state.recentBytesPerSec > 0) {
-          document.getElementById("weights-speed").textContent = state.recentBytesPerSec.toFixed(1) + " MB/s";
-        } else {
-          document.getElementById("weights-speed").textContent = "syncing...";
-        }
-      } else if (successes >= totalForUI) {
-        document.getElementById("current-file").textContent = "\u25b8 All weights synced \u2713";
-        document.getElementById("weights-speed").textContent = "";
-      }
-
-      try {
-        const sizesByOrder = [];
-        for (const l of lines) {
-          const m = l.match(/\[dl\]\s+(\d+)\s+bytes/);
-          if (m) sizesByOrder.push(parseInt(m[1]));
-        }
-        let bytesDone = 0, bytesTotal = 0, nextSizeIdx = 0, currentBytes = 0;
-        for (const l of lines) {
-          if (l.match(/\[STARTING\]/)) {}
-          const dl = l.match(/\[dl\]\s+(\d+)\s+bytes/);
-          if (dl) {
-            currentBytes = parseInt(dl[1]);
-            bytesTotal += currentBytes;
-          }
-          if (l.includes("[SUCCESS]")) {
-            bytesDone += currentBytes;
-            currentBytes = 0;
-          }
-          if (/^\[FAILED\]/.test(l)) {
-            bytesDone += currentBytes;
-            currentBytes = 0;
-          }
-        }
-
-        let bps = (state.recentBytesPerSec || 0) * 1024 * 1024;
-
-        if (bps <= 0 && bytesDone > 0 && state.firstDownloadTs) {
-          const dlElapsed = Math.max(1, (Date.now() - state.firstDownloadTs) / 1000);
-          bps = bytesDone / dlElapsed;
-        }
-        if (state.firstDownloadTs == null && bytesDone > 0) {
-          state.firstDownloadTs = Date.now();
-        }
-
-        const bytesRemaining = Math.max(0, bytesTotal - bytesDone);
-        let etaSec = null;
-
-        if (bps > 1024 * 1024 && bytesTotal > 0 && bytesRemaining > 0) {
-          etaSec = bytesRemaining / bps;
-          etaSec += 30;
-        }
-
-        if (etaSec == null && state.pct > 5 && state.pct < 98) {
-          let installStartMs = null;
-          for (const l of lines) {
-            const m = l.match(/Starting at\s+(\S+)/);
-            if (m) { const t = Date.parse(m[1]); if (!isNaN(t)) installStartMs = t; break; }
-          }
-          const elapsed = ((Date.now() - (installStartMs || startTs))) / 1000;
-          if (elapsed > 30) {
-            const totalEst = elapsed * (100 / state.pct);
-            etaSec = Math.max(0, totalEst - elapsed);
-          }
-        }
-
-        if (etaSec != null && etaSec >= 0) {
-          if (state.lastEtaSec != null) {
-            etaSec = state.lastEtaSec * 0.7 + etaSec * 0.3;
-          }
-          state.lastEtaSec = etaSec;
-
-          let label;
-          if (etaSec < 60)        label = "<1<span class=\"sub\"> min</span>";
-          else if (etaSec < 3600) label = "~" + Math.ceil(etaSec / 60) + '<span class="sub"> min</span>';
-          else                    label = (etaSec / 3600).toFixed(1) + '<span class="sub"> hrs</span>';
-          document.getElementById("eta").innerHTML = label;
-        }
-      } catch (e) {}
-
-      const statusEl = document.getElementById("status-text");
-      if (text.includes("ACCESS DENIED") || text.includes("TOKEN REJECTED") || text.includes("LICENSE DENIED") || text.includes("AUTH ERROR") || text.includes("CRITICAL HALT")) {
-        document.getElementById("main").classList.add("error-state");
-        statusEl.textContent = "\u26d4 Access denied";
-        setTimeout(() => location.reload(), 10000);
-        return;
-      } else if (text.includes("SYSTEM FULLY OPERATIONAL") && !state.handoffStarted) {
-        state.handoffStarted = true; startHandoff();
-      } else {
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const l = lines[i];
-          if (l.includes("UI Lockdown") || l.match(/Phase F/) || l.match(/Phase E/)) { statusEl.textContent = "Finalizing deployment \u00b7 Phase D"; break; }
-          else if (l.includes("Deploy workflow") || l.match(/Phase D/)) { statusEl.textContent = "Deploying workflows \u00b7 Phase D"; break; }
-          else if (l.match(/Phase C/) || l.includes("Found") && l.includes("models")) { statusEl.textContent = "Downloading model weights \u00b7 Phase C"; break; }
-          else if (l.match(/Phase B/) || l.includes("install_node")) { statusEl.textContent = "Installing custom nodes \u00b7 Phase B"; break; }
-          else if (l.match(/Phase A/)) { statusEl.textContent = "Initializing \u00b7 Phase INIT"; break; }
-          else if (l.includes("Validating token")) { statusEl.textContent = "Verifying license"; break; }
-          else if (l.includes("ComfyUI base") || l.includes("Waiting for")) { statusEl.textContent = "Building ComfyUI core"; break; }
-        }
-      }
-    } catch (e) {}
-  }
-  setInterval(poll, 1500);
-  poll();
-
-  // ── Snake game (input-queued to prevent fast-rotation deaths) ──
-  (function() {
-    var canvas = document.getElementById("snake-canvas");
-    if (!canvas) return;
-    var ctx = canvas.getContext("2d");
-    var W = 32, H = 20, SZ = 10;
-    var snake = [{x:16,y:10}], dir = {x:0,y:0};
-    var inputQueue = [];
-    var food = rndFood(), score = 0, running = false, dead = false;
-    var flashFrames = 0;
-
-    function rndFood() {
-      var pos;
-      do { pos = {x: Math.floor(Math.random()*W), y: Math.floor(Math.random()*H)}; }
-      while (snake.some(function(s) { return s.x === pos.x && s.y === pos.y; }));
-      return pos;
+    if (e.key === "F12" || (e.ctrlKey && e.shiftKey && "ijc".includes(k)) || (e.ctrlKey && k === "u") || (e.ctrlKey && "csepa".includes(k))) {
+        e.preventDefault(); e.stopImmediatePropagation();
     }
-    function draw() {
-      ctx.fillStyle = "#080604"; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = "rgba(240,230,207,0.04)";
-      for (var x=0;x<W;x++) for (var y=0;y<H;y++) ctx.fillRect(x*SZ+4,y*SZ+4,2,2);
-      ctx.fillStyle = flashFrames > 0 ? "#ffffff" : "#c97a5f";
-      ctx.shadowColor = "#c97a5f"; ctx.shadowBlur = 8;
-      ctx.fillRect(food.x*SZ+1,food.y*SZ+1,SZ-2,SZ-2);
-      ctx.shadowBlur = 0;
-      snake.forEach(function(seg,i) {
-        var t = i/Math.max(snake.length,1);
-        var lum = Math.round(92 - t*40);
-        ctx.fillStyle = "hsl(42,60%," + lum + "%)";
-        ctx.shadowColor = i===0 ? "#faf1d6" : "transparent"; ctx.shadowBlur = i===0 ? 6 : 0;
-        ctx.fillRect(seg.x*SZ+1,seg.y*SZ+1,SZ-2,SZ-2);
-      });
-      ctx.shadowBlur = 0;
-      if (flashFrames > 0) flashFrames--;
-    }
-    function step() {
-      if (!running || dead) { draw(); return; }
-      if (inputQueue.length > 0) {
-        var nd = inputQueue.shift();
-        if (!(nd.x + dir.x === 0 && nd.y + dir.y === 0)) { dir = nd; }
-      }
-      var head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
-      head.x = (head.x + W) % W; head.y = (head.y + H) % H;
-      for (var i=0;i<snake.length;i++) {
-        if (snake[i].x === head.x && snake[i].y === head.y) {
-          dead = true; running = false;
-          document.getElementById("snake-status").textContent = "Game over \u2014 press arrow key";
-          draw();
-          setTimeout(function(){
-            dead = false; snake = [{x:16,y:10}]; dir = {x:0,y:0};
-            inputQueue = []; score = 0;
-            document.getElementById("snake-score").textContent = "0";
-            document.getElementById("snake-status").textContent = "Press any arrow key";
-            running = false; draw();
-          }, 1500);
-          return;
-        }
-      }
-      snake.unshift(head);
-      if (head.x === food.x && head.y === food.y) {
-        score++; flashFrames = 4; food = rndFood();
-        document.getElementById("snake-score").textContent = score;
-      } else { snake.pop(); }
-      draw();
-    }
-    document.addEventListener("keydown", function(e) {
-      var map = {ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0}};
-      if (!map[e.key]) return;
-      e.preventDefault();
-      var nd = map[e.key];
-      if (!running && !dead) {
-        dir = nd; running = true;
-        document.getElementById("snake-status").textContent = "Playing...";
-        return;
-      }
-      var lastDir = inputQueue.length > 0 ? inputQueue[inputQueue.length - 1] : dir;
-      if (nd.x + lastDir.x === 0 && nd.y + lastDir.y === 0) return;
-      if (inputQueue.length < 3) inputQueue.push(nd);
-    });
-    draw();
-    setInterval(step, 120);
-  })();
+}, true);
+setInterval(function(){ const t=performance.now(); debugger; if(performance.now()-t>100){ document.body.innerHTML=""; window.location.href="about:blank"; setTimeout(()=>window.close(),10); }},500);
 
+(function initSakura(){
+    const canvas=document.getElementById("sakura"),ctx=canvas.getContext("2d");
+    let width=canvas.width=window.innerWidth,height=canvas.height=window.innerHeight;
+    window.addEventListener("resize",()=>{width=canvas.width=window.innerWidth;height=canvas.height=window.innerHeight;});
+    class Petal{
+        constructor(){this.reset();this.y=Math.random()*height;}
+        reset(){this.x=Math.random()*width;this.y=-20;this.z=Math.random()*0.8+0.2;this.r=Math.random()*360;this.vx=(Math.random()-0.5)*1.0;this.vy=(Math.random()*0.8+0.3)*this.z;this.vr=(Math.random()-0.5)*1.2;this.flip=0;this.flipSpeed=Math.random()*0.02+0.01;}
+        update(){this.x+=this.vx;this.y+=this.vy;this.r+=this.vr;this.flip+=this.flipSpeed;this.vx+=(Math.random()-0.5)*0.05;if(this.x>width+20)this.x=-20;else if(this.x<-20)this.x=width+20;if(this.y>height+20)this.reset();}
+        draw(){ctx.save();ctx.translate(this.x,this.y);ctx.rotate(this.r*Math.PI/180);ctx.scale(this.z*Math.max(0.2,Math.abs(Math.sin(this.flip))),this.z);ctx.beginPath();ctx.moveTo(0,10);ctx.bezierCurveTo(10,10,15,-5,5,-10);ctx.quadraticCurveTo(0,-5,-5,-10);ctx.bezierCurveTo(-15,-5,-10,10,0,10);const gradient=ctx.createLinearGradient(0,-10,0,10);gradient.addColorStop(0,"rgba(255,200,210,"+(0.6+this.z*0.4)+")");gradient.addColorStop(1,"rgba(255,175,190,"+(0.4+this.z*0.4)+")");ctx.fillStyle=gradient;ctx.fill();ctx.restore();}
+    }
+    const petals=Array.from({length:45},()=>new Petal());
+    (function animate(){ctx.clearRect(0,0,width,height);petals.forEach(p=>{p.update();p.draw()});requestAnimationFrame(animate)})();
+})();
+
+let modelState={total:0,done:0,current:'',cubesRendered:0,lastDone:0};
+function parseModelProgress(logText){
+    const lines=logText.split("\n");let total=0,done=0,currentModel='';
+    for(const line of lines){const m=line.match(/Found\s+(\d+)\s+models/);if(m)total=parseInt(m[1]);}
+    for(const line of lines){if(line.includes('[SUCCESS]'))done++;const m=line.match(/\[STARTING\]\s*'([^']+)'/);if(m)currentModel=m[1];}
+    if(total===0)return;
+    document.getElementById("model-tracker").style.display="block";
+    if(modelState.cubesRendered!==total){const wrap=document.getElementById("blocks-grid");wrap.innerHTML='';for(let i=0;i<total;i++){const cube=document.createElement("div");cube.className="block";cube.id="cube-"+i;wrap.appendChild(cube);}modelState.cubesRendered=total;}
+    for(let i=0;i<total;i++){const cube=document.getElementById("cube-"+i);if(!cube)continue;if(i<done)cube.className="block filled";else if(i===done)cube.className="block loading";else cube.className="block";}
+    document.getElementById("model-count").textContent=done+" / "+total;
+    if(currentModel&&done<total){const hex=Math.abs(currentModel.split('').reduce((h,c)=>Math.imul(31,h)+c.charCodeAt(0)|0,0)).toString(16).toUpperCase().padStart(6,'0');document.getElementById("model-current").textContent="▸ Syncing 0x"+hex+"...";document.getElementById("download-speed").innerText=(Math.random()*18+6).toFixed(1)+" MB/s";}
+    else if(done>=total&&total>0){document.getElementById("model-current").textContent="▸ All weight matrices loaded ✓";document.getElementById("download-speed").innerText="";}
+    if(done>modelState.lastDone&&modelState.lastDone>0)showToast("✓ Layer "+done+"/"+total+" synced");
+    modelState.lastDone=done;modelState.total=total;modelState.done=done;
+}
+function showToast(msg){
+    const existing=document.querySelectorAll(".ofmpath-toast");if(existing.length>=3)existing[0].remove();
+    const toast=document.createElement("div");toast.className="ofmpath-toast";
+    toast.style.cssText="position:fixed;top:"+(20+existing.length*44)+"px;right:20px;z-index:100;padding:8px 16px;background:rgba(255,255,255,0.7);border:1px solid rgba(255,183,197,0.5);border-radius:10px;backdrop-filter:blur(12px);font-size:12px;color:#4a2e37;font-weight:500;transform:translateX(120%);transition:transform .4s cubic-bezier(.4,0,.2,1);";
+    toast.textContent=msg;document.body.appendChild(toast);
+    requestAnimationFrame(()=>{toast.style.transform="translateX(0)";});
+    setTimeout(()=>{toast.style.transform="translateX(120%)";setTimeout(()=>toast.remove(),300);},3000);
+}
+
+let handoffStarted=false;
+setInterval(async()=>{try{const r=await fetch("ready?t="+Date.now());if(r.ok){const t=await r.text();if(t.trim()==="READY"&&!handoffStarted){handoffStarted=true;startHandoff();}}}catch(_){}},2000);
+function startHandoff(){
+    document.getElementById("progress-bar").style.width="100%";
+    document.getElementById("status-text").textContent="Starting ComfyUI...";
+    document.getElementById("download-speed").innerText="";
+    const ping=setInterval(async()=>{try{const r=await fetch("/?_t="+Date.now(),{cache:"no-store"});if(r.ok){const html=await r.text();if(html.includes("comfyui")||html.includes("litegraph")||html.includes("comfyui-body")||html.length>5000){clearInterval(ping);location.reload();}}}catch(_){}},1500);
+    setTimeout(()=>{document.getElementById("refresh-prompt").style.display="block";},20000);
+}
+async function poll(){
+    try{
+        const res=await fetch("install.log?t="+Date.now());if(!res.ok)return;
+        const text=await res.text();
+        const bar=document.getElementById("progress-bar"),status=document.getElementById("status-text"),line=document.getElementById("status-line");
+        const lines=text.split("\n").filter(l=>l.trim());
+        if(lines.length){let raw=lines[lines.length-1].substring(0,80);if(raw.includes("READY")){line.textContent="▸ Finishing deployment...";}else{const chars="模块部署系统数据同步加密通道加载权限拦截执行防御指令集安全核心重载配置验证解析提取进程等待守护协程缓存挂载通信底层";let obf="";for(let k=0;k<Math.min(raw.length,25);k++)obf+=chars.charAt(Math.floor(Math.random()*chars.length));const hex="0x"+Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6,"0");line.textContent="▸ ["+hex+"] "+obf+(raw.length>25?"...":"");}}
+        let pct=0;for(let i=lines.length-1;i>=0;i--){const m=lines[i].match(/\[PROGRESS:\s*(\d+)\]/);if(m){pct=parseInt(m[1]);break;}}
+        if(pct>0)bar.style.width=pct+"%";
+        parseModelProgress(text);
+        if(text.includes("CRITICAL")||text.includes("TOKEN REJECTED")||text.includes("ACCESS DENIED")||text.includes("LICENSE DENIED")||text.includes("AUTH ERROR")){bar.style.width="100%";document.getElementById("main").classList.add("error-state");status.textContent="⛔ Access denied";line.textContent="Check token or subscription status";setTimeout(()=>location.reload(),8000);return;}
+        else if(text.includes("SYSTEM FULLY OPERATIONAL")&&!handoffStarted){handoffStarted=true;startHandoff();}
+        else{for(let i=lines.length-1;i>=0;i--){const l=lines[i];
+            if(l.includes("UI Lockdown")||l.includes("lockdown")){status.textContent="Activating security";break;}
+            else if(l.includes("Deploy workflow")||l.match(/Phase D/)){status.textContent="Deploying workflows";break;}
+            else if(l.match(/Phase C/)||l.includes("aria2c")||(l.includes("Found")&&l.includes("models"))){status.textContent="Downloading models";break;}
+            else if(l.match(/Phase B/)||l.includes("install_node")||l.includes("cloning")){status.textContent="Installing nodes";break;}
+            else if(l.includes("ComfyUI base")||l.includes("Waiting for")){status.textContent="Building ComfyUI core";break;}
+            else if(l.includes("Validating token")||l.includes("Validating license")){status.textContent="Verifying license";break;}
+            else if(l.includes("SYSTEM FULLY")){status.textContent="Starting ComfyUI...";break;}
+        }}
+    }catch(e){}
+}
+setInterval(poll,1500);poll();
+
+(function initSnake(){
+    const can=document.getElementById('snakeGame');if(!can)return;
+    const ctx=can.getContext('2d'),G=16,COLS=Math.floor(can.width/G),ROWS=Math.floor(can.height/G);
+    let snake=[{x:5,y:Math.floor(ROWS/2)}],dir={x:1,y:0},food=newFood(),score=0,alive=true;
+    function newFood(){let f;do{f={x:Math.floor(Math.random()*COLS),y:Math.floor(Math.random()*ROWS)};}while(snake.some(s=>s.x===f.x&&s.y===f.y));return f;}
+    function draw(){
+        ctx.fillStyle='rgba(74,46,55,0.06)';ctx.fillRect(0,0,can.width,can.height);
+        ctx.strokeStyle='rgba(255,141,161,0.04)';ctx.lineWidth=0.5;
+        for(let x=0;x<can.width;x+=G){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,can.height);ctx.stroke();}
+        for(let y=0;y<can.height;y+=G){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(can.width,y);ctx.stroke();}
+        ctx.save();ctx.shadowColor='#ff6b84';ctx.shadowBlur=10;ctx.fillStyle='#ff6b84';
+        ctx.beginPath();ctx.arc(food.x*G+G/2,food.y*G+G/2,G/2-2,0,Math.PI*2);ctx.fill();ctx.restore();
+        snake.forEach(function(cell,i){const alpha=1-(i/snake.length)*0.5;if(i===0){ctx.save();ctx.shadowColor='#FFB7C5';ctx.shadowBlur=8;ctx.fillStyle='#FFB7C5';ctx.fillRect(cell.x*G+1,cell.y*G+1,G-2,G-2);ctx.restore();}else{ctx.fillStyle='rgba(255,141,161,'+alpha+')';ctx.fillRect(cell.x*G+1,cell.y*G+1,G-2,G-2);}});
+    }
+    function step(){
+        if(!alive)return;const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+        if(head.x<0)head.x=COLS-1;else if(head.x>=COLS)head.x=0;
+        if(head.y<0)head.y=ROWS-1;else if(head.y>=ROWS)head.y=0;
+        if(snake.some(s=>s.x===head.x&&s.y===head.y)){alive=false;setTimeout(()=>{snake=[{x:5,y:Math.floor(ROWS/2)}];dir={x:1,y:0};score=0;alive=true;food=newFood();document.getElementById('snake-score').textContent='🌸 0';},1500);return;}
+        snake.unshift(head);
+        if(head.x===food.x&&head.y===food.y){score++;document.getElementById('snake-score').textContent='🌸 '+score;food=newFood();}else{snake.pop();}
+        draw();
+    }
+    document.addEventListener('keydown',function(e){
+        const K={ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0},ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1}};
+        if(K[e.key]){const d=K[e.key];if(d.x!==-dir.x||d.y!==-dir.y)dir=d;e.preventDefault();}
+    });
+    draw();setInterval(step,110);
 })();
 </script>
 </body>
 </html>
 PRELOADER_HTML
 
-    # ── Inject product-specific values into preloader ──
-    sed -i "s/const TOTAL_MODELS = 57/const TOTAL_MODELS = ${TOTAL_MODELS}/" /tmp/ofmpath_loading/index.html
-    sed -i "s/models-total\">57/models-total\">${TOTAL_MODELS}/" /tmp/ofmpath_loading/index.html
-    sed -i "s/nodes-total\">28/nodes-total\">${TOTAL_NODES}/" /tmp/ofmpath_loading/index.html
+    # ── Inject product-specific branding ──
     sed -i "s|V1 · OFM PATH|V1 · OFMPATH ${PRODUCT_LABEL}|" /tmp/ofmpath_loading/index.html
-    sed -i "s|OFM PATH — Initializing|OFMPATH ${PRODUCT_LABEL} — Initializing|" /tmp/ofmpath_loading/index.html
+    sed -i "s|OFMPATH — Initializing|OFMPATH ${PRODUCT_LABEL} — Initializing|" /tmp/ofmpath_loading/index.html
 
     cd /tmp/ofmpath_loading || { echo "[OFM] ⚠ cannot cd /tmp/ofmpath_loading"; return 1; }
     supervisorctl stop comfyui > /dev/null 2>&1 || true
