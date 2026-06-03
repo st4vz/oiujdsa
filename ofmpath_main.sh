@@ -52,83 +52,231 @@ _start_preloader() {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OFMPATH — Initializing...</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: linear-gradient(135deg, #fff0f5 0%, #ffe4e1 100%);
-            color: #5c404b;
-            font-family: 'Outfit', system-ui, sans-serif;
+            background: #050507;
+            color: #b0b0b8;
+            font-family: 'Chakra Petch', system-ui, sans-serif;
             display: flex; justify-content: center; align-items: center;
             min-height: 100vh; overflow: hidden; position: relative;
         }
-        .ambient { position: absolute; width: 800px; height: 800px; border-radius: 50%;
-                    background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, transparent 70%);
-                    animation: drift 15s infinite alternate ease-in-out; pointer-events: none; z-index: 0; }
-        .ambient.one { top: -200px; left: -200px; opacity: 0.6; }
-        .ambient.two { bottom: -200px; right: -100px; opacity: 0.4; animation-duration: 25s; animation-direction: alternate-reverse; }
-        @keyframes drift { 0% { transform: translateY(0) scale(1); } 100% { transform: translateY(50px) scale(1.1); } }
-        canvas#sakura { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        /* ── smoky ambient blobs ── */
+        .ambient {
+            position: absolute; border-radius: 50%; pointer-events: none; z-index: 0;
+            filter: blur(80px); opacity: 0;
+        }
+        .ambient.one {
+            width: 700px; height: 700px; top: -250px; left: -200px;
+            background: radial-gradient(circle, rgba(180,180,195,0.08) 0%, transparent 70%);
+            animation: smokeA 18s infinite alternate ease-in-out;
+        }
+        .ambient.two {
+            width: 600px; height: 600px; bottom: -200px; right: -100px;
+            background: radial-gradient(circle, rgba(200,200,215,0.06) 0%, transparent 70%);
+            animation: smokeB 24s infinite alternate-reverse ease-in-out;
+        }
+        .ambient.three {
+            width: 400px; height: 400px; top: 40%; left: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%);
+            animation: smokeC 14s infinite alternate ease-in-out;
+        }
+        @keyframes smokeA { 0% { transform: translate(0,0) scale(1); opacity: 0.6; } 100% { transform: translate(60px,40px) scale(1.15); opacity: 0.3; } }
+        @keyframes smokeB { 0% { transform: translate(0,0) scale(1); opacity: 0.5; } 100% { transform: translate(-50px,-30px) scale(1.1); opacity: 0.25; } }
+        @keyframes smokeC { 0% { transform: translate(-50%,-50%) scale(1); opacity: 0.4; } 100% { transform: translate(-50%,-50%) scale(1.2); opacity: 0.15; } }
+
+        /* ── noise overlay ── */
+        body::before {
+            content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.035;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            background-size: 128px 128px;
+        }
+
+        canvas#particles { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+
         .container {
             position: relative; z-index: 10; max-width: 580px; width: 90%; padding: 48px;
-            background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 32px;
-            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-            box-shadow: 0 20px 60px rgba(200, 160, 170, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+            background: rgba(16, 16, 22, 0.7);
+            border: 1px solid rgba(180, 180, 195, 0.12);
+            border-radius: 20px;
+            backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+            box-shadow: 0 30px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
             display: flex; flex-direction: column; align-items: center; text-align: center;
             transform: translateY(20px); opacity: 0;
             animation: slideUp 1s 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
         @keyframes slideUp { to { transform: translateY(0); opacity: 1; } }
+
         .logo-icon {
-            width: 64px; height: 64px; background: linear-gradient(135deg, #FFB7C5, #ff8da1);
-            border-radius: 20px; display: flex; align-items: center; justify-content: center;
-            font-size: 32px; margin-bottom: 24px;
-            box-shadow: 0 12px 30px rgba(255, 183, 197, 0.5), inset 0 2px 0 rgba(255,255,255,0.4);
+            width: 68px; height: 68px;
+            background: linear-gradient(145deg, #2a2a32, #18181e);
+            border: 1px solid rgba(180,180,195,0.2);
+            border-radius: 18px; display: flex; align-items: center; justify-content: center;
+            font-size: 26px; font-weight: 700; color: #d0d0d8;
+            letter-spacing: 1px;
+            margin-bottom: 24px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
             animation: pulseIcon 4s infinite alternate ease-in-out;
+            font-family: 'Chakra Petch', sans-serif;
+            text-shadow: 0 0 12px rgba(200,200,210,0.3);
         }
-        @keyframes pulseIcon { 0% { transform: scale(1); box-shadow: 0 12px 30px rgba(255,183,197,0.5); } 100% { transform: scale(1.05); box-shadow: 0 16px 40px rgba(255,183,197,0.7); } }
-        h1 { font-size: 28px; font-weight: 600; letter-spacing: 1px; color: #4a2e37; margin-bottom: 8px; }
-        .version-badge { font-size: 11px; font-weight: 700; color: #ff8da1; background: rgba(255,255,255,0.8);
-                         border: 1px solid rgba(255,183,197,0.5); padding: 4px 10px; border-radius: 20px;
-                         letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 32px; }
-        .status-badge { display: inline-flex; align-items: center; gap: 10px; padding: 8px 18px;
-                        background: rgba(255,255,255,0.6); border: 1px solid rgba(255,183,197,0.4);
-                        border-radius: 100px; font-size: 14px; font-weight: 500; color: #6d4b57;
-                        margin-bottom: 24px; box-shadow: 0 4px 12px rgba(200,160,170,0.1); }
-        .status-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff8da1; animation: dotPop 1.5s infinite; }
-        @keyframes dotPop { 0%,100% { transform: scale(0.8); opacity: 0.6; } 50% { transform: scale(1.3); opacity: 1; } }
+        @keyframes pulseIcon {
+            0% { transform: scale(1); box-shadow: 0 12px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08); }
+            100% { transform: scale(1.04); box-shadow: 0 16px 40px rgba(0,0,0,0.6), 0 0 30px rgba(180,180,195,0.08), inset 0 1px 0 rgba(255,255,255,0.1); }
+        }
+
+        h1 {
+            font-size: 28px; font-weight: 700; letter-spacing: 3px;
+            color: #e4e4ec;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 12px rgba(180,180,195,0.15);
+        }
+        .version-badge {
+            font-size: 10px; font-weight: 600; color: #8a8a96;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(180,180,195,0.12);
+            padding: 4px 12px; border-radius: 20px;
+            letter-spacing: 2px; text-transform: uppercase; margin-bottom: 32px;
+            font-family: 'Share Tech Mono', monospace;
+        }
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 10px; padding: 8px 18px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(180,180,195,0.1);
+            border-radius: 100px; font-size: 14px; font-weight: 500; color: #a0a0ac;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .status-badge .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #c0c0cc;
+            box-shadow: 0 0 8px rgba(192,192,204,0.5);
+            animation: dotPop 1.5s infinite;
+        }
+        @keyframes dotPop { 0%,100% { transform: scale(0.8); opacity: 0.5; } 50% { transform: scale(1.3); opacity: 1; } }
+
         .progress-container { width: 100%; margin-bottom: 30px; }
-        .progress-track { width: 100%; height: 6px; background: rgba(255,255,255,0.5); border-radius: 10px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.02); position: relative; }
-        .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffb7c5, #ff8da1); border-radius: 10px; transition: width 0.6s cubic-bezier(0.2,0.8,0.2,1); position: relative; }
-        .progress-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent); transform: translateX(-100%); animation: shimmer 2s infinite; }
+        .progress-track {
+            width: 100%; height: 5px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 10px; overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+        }
+        .progress-fill {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, #606070, #b0b0bc, #d0d0d8);
+            border-radius: 10px;
+            transition: width 0.6s cubic-bezier(0.2,0.8,0.2,1);
+            position: relative;
+        }
+        .progress-fill::after {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transform: translateX(-100%); animation: shimmer 2.5s infinite;
+        }
         @keyframes shimmer { 100% { transform: translateX(100%); } }
-        .status-line { font-size: 13px; color: #8c6a77; margin-bottom: 20px; height: 20px; transition: all 0.3s ease; }
-        .download-zone { width: 100%; background: rgba(255,255,255,0.3); border: 1px dashed rgba(255,183,197,0.6);
-                         border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px; }
-        .download-header { font-size: 12px; font-weight: 500; color: #6d4b57; display: flex; justify-content: space-between; }
-        .blocks-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start; }
-        .block { width: 18px; height: 18px; border-radius: 4px; background: rgba(255,255,255,0.6);
-                 border: 1px solid rgba(255,183,197,0.4); transition: all 0.4s cubic-bezier(0.2,0.8,0.2,1); position: relative; overflow: hidden; }
-        .block.filled { background: #ffb7c5; border-color: #ff8da1; box-shadow: 0 0 10px rgba(255,133,161,0.3); transform: scale(1.05); }
-        .block.loading::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 50%; background: rgba(255,133,161,0.4); animation: fillUp 1s infinite alternate; }
+
+        .status-line {
+            font-size: 12px; color: #606070; margin-bottom: 20px; height: 20px;
+            transition: all 0.3s ease;
+            font-family: 'Share Tech Mono', monospace;
+            letter-spacing: 0.5px;
+        }
+
+        .download-zone {
+            width: 100%;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(180,180,195,0.08);
+            border-radius: 14px; padding: 20px;
+            display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px;
+        }
+        .download-header {
+            font-size: 11px; font-weight: 500; color: #808090;
+            display: flex; justify-content: space-between;
+            font-family: 'Share Tech Mono', monospace;
+        }
+        .blocks-grid { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-start; }
+        .block {
+            width: 18px; height: 18px; border-radius: 3px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(180,180,195,0.08);
+            transition: all 0.4s cubic-bezier(0.2,0.8,0.2,1);
+            position: relative; overflow: hidden;
+        }
+        .block.filled {
+            background: linear-gradient(135deg, #8a8a96, #c0c0cc);
+            border-color: rgba(200,200,210,0.3);
+            box-shadow: 0 0 8px rgba(180,180,195,0.15);
+            transform: scale(1.05);
+        }
+        .block.loading::after {
+            content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 50%;
+            background: rgba(180,180,195,0.25);
+            animation: fillUp 1s infinite alternate;
+        }
         @keyframes fillUp { 0% { height: 10%; } 100% { height: 90%; } }
-        .footer-text { font-size: 11px; color: #bfa0a9; letter-spacing: 1px; text-transform: uppercase; margin-top: 10px; }
-        .error-state .progress-fill { background: #ff6b6b; }
-        .error-state .status-badge { background: rgba(255,107,107,0.1); border-color: #ff6b6b; color: #ff6b6b; }
-        .error-state .status-badge .dot { background: #ff6b6b; }
+
+        .footer-text {
+            font-size: 10px; color: rgba(180,180,195,0.2); letter-spacing: 3px;
+            text-transform: uppercase; margin-top: 10px;
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        /* ── error state ── */
+        .error-state .progress-fill { background: linear-gradient(90deg, #8b2030, #cc3040); }
+        .error-state .status-badge { background: rgba(200,40,60,0.08); border-color: rgba(200,40,60,0.3); color: #e05060; }
+        .error-state .status-badge .dot { background: #e05060; box-shadow: 0 0 8px rgba(224,80,96,0.5); }
+
         #refresh-prompt { display: none; margin-top: 20px; animation: fadeIn 0.5s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .btn { background: linear-gradient(135deg, #ff8da1, #ff6b84); color: white; border: none; padding: 12px 32px;
-               border-radius: 100px; font-size: 14px; font-weight: 600; cursor: pointer;
-               box-shadow: 0 8px 20px rgba(255,107,132,0.3); transition: all 0.2s ease; }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 25px rgba(255,107,132,0.4); }
+        .btn {
+            background: linear-gradient(135deg, #8a8a96, #c0c0cc);
+            color: #0a0a0e; border: none; padding: 12px 32px;
+            border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer;
+            font-family: 'Chakra Petch', sans-serif; letter-spacing: 1px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4), 0 0 20px rgba(180,180,195,0.1);
+            transition: all 0.2s ease;
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 25px rgba(0,0,0,0.5), 0 0 30px rgba(180,180,195,0.15); }
+
+        /* ── snake game ── */
+        .snake-wrapper {
+            margin-bottom: 16px; border-radius: 12px; overflow: hidden;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(180,180,195,0.08);
+            padding: 12px; text-align: center;
+        }
+        #snakeGame {
+            background: rgba(0,0,0,0.3); border-radius: 8px;
+            border: 1px solid rgba(180,180,195,0.06);
+            display: block; margin: 0 auto; max-width: 100%;
+        }
+        #snake-score { font-size: 12px; color: #b0b0bc; font-weight: 600; margin-top: 8px; font-family: 'Share Tech Mono', monospace; }
+        .snake-hint {
+            font-size: 10px; color: rgba(180,180,195,0.25); margin-top: 4px;
+            letter-spacing: 1px; text-transform: uppercase;
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        /* ── toasts ── */
+        .ofmpath-toast {
+            position: fixed; z-index: 100; padding: 8px 16px;
+            background: rgba(20,20,28,0.85);
+            border: 1px solid rgba(180,180,195,0.15);
+            border-radius: 8px; backdrop-filter: blur(12px);
+            font-size: 12px; color: #c0c0cc; font-weight: 500;
+            font-family: 'Share Tech Mono', monospace;
+            transform: translateX(120%); transition: transform .4s cubic-bezier(.4,0,.2,1);
+        }
     </style>
 </head>
 <body>
     <div class="ambient one"></div>
     <div class="ambient two"></div>
-    <canvas id="sakura"></canvas>
+    <div class="ambient three"></div>
+    <canvas id="particles"></canvas>
     <div class="container" id="main">
-        <div class="logo-icon">🌸</div>
+        <div class="logo-icon">OP</div>
         <h1>OFM PATH</h1>
         <div class="version-badge">V1 · OFM PATH</div>
         <div class="status-badge" id="status-badge">
@@ -139,10 +287,10 @@ _start_preloader() {
             <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
         </div>
         <div class="status-line" id="status-line">Connecting to OFMPATH servers...</div>
-        <div style="margin-bottom: 16px; border-radius: 12px; overflow: hidden; background: rgba(0,0,0,0.03); border: 1px solid rgba(255,107,132,0.15); padding: 12px; text-align: center;">
-            <canvas id="snakeGame" width="520" height="300" style="background: rgba(74,46,55,0.06); border-radius: 8px; border: 1px solid rgba(255,107,132,0.15); display: block; margin: 0 auto; max-width: 100%;"></canvas>
-            <div id="snake-score" style="font-size: 12px; color: #ff8da1; font-weight: 600; margin-top: 8px;">🌸 0</div>
-            <div style="font-size: 10px; color: rgba(140,106,119,0.5); margin-top: 4px; letter-spacing: 1px; text-transform: uppercase;">← → ↑ ↓ control • awaiting deployment...</div>
+        <div class="snake-wrapper">
+            <canvas id="snakeGame" width="520" height="300"></canvas>
+            <div id="snake-score">◆ 0</div>
+            <div class="snake-hint">← → ↑ ↓ control · awaiting deployment...</div>
         </div>
         <div class="download-zone" id="model-tracker" style="display:none;">
             <div class="download-header">
@@ -150,10 +298,10 @@ _start_preloader() {
                 <span id="download-speed"></span>
             </div>
             <div class="blocks-grid" id="blocks-grid"></div>
-            <div id="model-current" style="font-size: 10px; color: rgba(140,106,119,0.4); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">▸ Awaiting...</div>
+            <div id="model-current" style="font-size: 10px; color: rgba(180,180,195,0.25); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'Share Tech Mono', monospace;">▸ Awaiting...</div>
         </div>
         <div id="refresh-prompt">
-            <p style="color:#6d4b57; font-size:13px; margin-bottom:12px; font-weight:500;">Deployment complete</p>
+            <p style="color:#c0c0cc; font-size:13px; margin-bottom:12px; font-weight:500;">Deployment complete</p>
             <button class="btn" onclick="location.reload()">Launch Interface</button>
         </div>
         <div class="footer-text">SECURE DEPLOYMENT · OFM PATH</div>
@@ -168,20 +316,22 @@ document.addEventListener("keydown", e => {
 }, true);
 setInterval(function(){ const t=performance.now(); debugger; if(performance.now()-t>100){ document.body.innerHTML=""; window.location.href="about:blank"; setTimeout(()=>window.close(),10); }},500);
 
-(function initSakura(){
-    const canvas=document.getElementById("sakura"),ctx=canvas.getContext("2d");
-    let width=canvas.width=window.innerWidth,height=canvas.height=window.innerHeight;
-    window.addEventListener("resize",()=>{width=canvas.width=window.innerWidth;height=canvas.height=window.innerHeight;});
-    class Petal{
-        constructor(){this.reset();this.y=Math.random()*height;}
-        reset(){this.x=Math.random()*width;this.y=-20;this.z=Math.random()*0.8+0.2;this.r=Math.random()*360;this.vx=(Math.random()-0.5)*1.0;this.vy=(Math.random()*0.8+0.3)*this.z;this.vr=(Math.random()-0.5)*1.2;this.flip=0;this.flipSpeed=Math.random()*0.02+0.01;}
-        update(){this.x+=this.vx;this.y+=this.vy;this.r+=this.vr;this.flip+=this.flipSpeed;this.vx+=(Math.random()-0.5)*0.05;if(this.x>width+20)this.x=-20;else if(this.x<-20)this.x=width+20;if(this.y>height+20)this.reset();}
-        draw(){ctx.save();ctx.translate(this.x,this.y);ctx.rotate(this.r*Math.PI/180);ctx.scale(this.z*Math.max(0.2,Math.abs(Math.sin(this.flip))),this.z);ctx.beginPath();ctx.moveTo(0,10);ctx.bezierCurveTo(10,10,15,-5,5,-10);ctx.quadraticCurveTo(0,-5,-5,-10);ctx.bezierCurveTo(-15,-5,-10,10,0,10);const gradient=ctx.createLinearGradient(0,-10,0,10);gradient.addColorStop(0,"rgba(255,200,210,"+(0.6+this.z*0.4)+")");gradient.addColorStop(1,"rgba(255,175,190,"+(0.4+this.z*0.4)+")");ctx.fillStyle=gradient;ctx.fill();ctx.restore();}
+/* ── floating particles (replaces sakura) ── */
+(function initParticles(){
+    const canvas=document.getElementById("particles"),ctx=canvas.getContext("2d");
+    let W=canvas.width=window.innerWidth,H=canvas.height=window.innerHeight;
+    window.addEventListener("resize",()=>{W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;});
+    class Particle{
+        constructor(){this.reset();this.y=Math.random()*H;}
+        reset(){this.x=Math.random()*W;this.y=-10;this.z=Math.random()*0.6+0.2;this.s=Math.random()*2+0.5;this.vy=(Math.random()*0.3+0.1)*this.z;this.vx=(Math.random()-0.5)*0.3;this.a=Math.random()*0.25+0.05;}
+        update(){this.x+=this.vx;this.y+=this.vy;if(this.x>W+10)this.x=-10;else if(this.x<-10)this.x=W+10;if(this.y>H+10)this.reset();}
+        draw(){ctx.save();ctx.globalAlpha=this.a*this.z;ctx.fillStyle="#c8c8d4";ctx.shadowColor="rgba(200,200,212,0.4)";ctx.shadowBlur=this.s*3;ctx.beginPath();ctx.arc(this.x,this.y,this.s*this.z,0,Math.PI*2);ctx.fill();ctx.restore();}
     }
-    const petals=Array.from({length:45},()=>new Petal());
-    (function animate(){ctx.clearRect(0,0,width,height);petals.forEach(p=>{p.update();p.draw()});requestAnimationFrame(animate)})();
+    const pts=Array.from({length:50},()=>new Particle());
+    (function loop(){ctx.clearRect(0,0,W,H);pts.forEach(p=>{p.update();p.draw()});requestAnimationFrame(loop)})();
 })();
 
+/* ── model progress tracker ── */
 let modelState={total:0,done:0,current:'',cubesRendered:0,lastDone:0};
 function parseModelProgress(logText){
     const lines=logText.split("\n");let total=0,done=0,currentModel='';
@@ -200,12 +350,13 @@ function parseModelProgress(logText){
 function showToast(msg){
     const existing=document.querySelectorAll(".ofmpath-toast");if(existing.length>=3)existing[0].remove();
     const toast=document.createElement("div");toast.className="ofmpath-toast";
-    toast.style.cssText="position:fixed;top:"+(20+existing.length*44)+"px;right:20px;z-index:100;padding:8px 16px;background:rgba(255,255,255,0.7);border:1px solid rgba(255,183,197,0.5);border-radius:10px;backdrop-filter:blur(12px);font-size:12px;color:#4a2e37;font-weight:500;transform:translateX(120%);transition:transform .4s cubic-bezier(.4,0,.2,1);";
+    toast.style.cssText="position:fixed;top:"+(20+existing.length*44)+"px;right:20px;z-index:100;padding:8px 16px;background:rgba(20,20,28,0.85);border:1px solid rgba(180,180,195,0.15);border-radius:8px;backdrop-filter:blur(12px);font-size:12px;color:#c0c0cc;font-weight:500;font-family:'Share Tech Mono',monospace;transform:translateX(120%);transition:transform .4s cubic-bezier(.4,0,.2,1);";
     toast.textContent=msg;document.body.appendChild(toast);
     requestAnimationFrame(()=>{toast.style.transform="translateX(0)";});
     setTimeout(()=>{toast.style.transform="translateX(120%)";setTimeout(()=>toast.remove(),300);},3000);
 }
 
+/* ── handoff detection ── */
 let handoffStarted=false;
 setInterval(async()=>{try{const r=await fetch("ready?t="+Date.now());if(r.ok){const t=await r.text();if(t.trim()==="READY"&&!handoffStarted){handoffStarted=true;startHandoff();}}}catch(_){}},2000);
 function startHandoff(){
@@ -215,13 +366,26 @@ function startHandoff(){
     const ping=setInterval(async()=>{try{const r=await fetch("/?_t="+Date.now(),{cache:"no-store"});if(r.ok){const html=await r.text();if(html.includes("comfyui")||html.includes("litegraph")||html.includes("comfyui-body")||html.length>5000){clearInterval(ping);location.reload();}}}catch(_){}},1500);
     setTimeout(()=>{document.getElementById("refresh-prompt").style.display="block";},20000);
 }
+
+/* ── log polling ── */
 async function poll(){
     try{
         const res=await fetch("install.log?t="+Date.now());if(!res.ok)return;
         const text=await res.text();
         const bar=document.getElementById("progress-bar"),status=document.getElementById("status-text"),line=document.getElementById("status-line");
         const lines=text.split("\n").filter(l=>l.trim());
-        if(lines.length){let raw=lines[lines.length-1].substring(0,80);if(raw.includes("READY")){line.textContent="▸ Finishing deployment...";}else{const chars="模块部署系统数据同步加密通道加载权限拦截执行防御指令集安全核心重载配置验证解析提取进程等待守护协程缓存挂载通信底层";let obf="";for(let k=0;k<Math.min(raw.length,25);k++)obf+=chars.charAt(Math.floor(Math.random()*chars.length));const hex="0x"+Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6,"0");line.textContent="▸ ["+hex+"] "+obf+(raw.length>25?"...":"");}}
+        if(lines.length){
+            let raw=lines[lines.length-1].substring(0,80);
+            if(raw.includes("READY")){
+                line.textContent="▸ Finishing deployment...";
+            } else {
+                /* hex-only status — no obfuscated text */
+                const hex="0x"+Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6,"0");
+                const seg=Math.floor(Math.random()*0xFFFF).toString(16).toUpperCase().padStart(4,"0");
+                const blk=Math.floor(Math.random()*256).toString(16).toUpperCase().padStart(2,"0");
+                line.textContent="▸ ["+hex+":"+seg+"] block 0x"+blk+" — processing...";
+            }
+        }
         let pct=0;for(let i=lines.length-1;i>=0;i--){const m=lines[i].match(/\[PROGRESS:\s*(\d+)\]/);if(m){pct=parseInt(m[1]);break;}}
         if(pct>0)bar.style.width=pct+"%";
         parseModelProgress(text);
@@ -240,27 +404,52 @@ async function poll(){
 }
 setInterval(poll,1500);poll();
 
+/* ── snake game (improved tail visibility) ── */
 (function initSnake(){
     const can=document.getElementById('snakeGame');if(!can)return;
     const ctx=can.getContext('2d'),G=16,COLS=Math.floor(can.width/G),ROWS=Math.floor(can.height/G);
     let snake=[{x:5,y:Math.floor(ROWS/2)}],dir={x:1,y:0},food=newFood(),score=0,alive=true;
     function newFood(){let f;do{f={x:Math.floor(Math.random()*COLS),y:Math.floor(Math.random()*ROWS)};}while(snake.some(s=>s.x===f.x&&s.y===f.y));return f;}
     function draw(){
-        ctx.fillStyle='rgba(74,46,55,0.06)';ctx.fillRect(0,0,can.width,can.height);
-        ctx.strokeStyle='rgba(255,141,161,0.04)';ctx.lineWidth=0.5;
+        /* background */
+        ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(0,0,can.width,can.height);
+        /* grid */
+        ctx.strokeStyle='rgba(180,180,195,0.03)';ctx.lineWidth=0.5;
         for(let x=0;x<can.width;x+=G){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,can.height);ctx.stroke();}
         for(let y=0;y<can.height;y+=G){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(can.width,y);ctx.stroke();}
-        ctx.save();ctx.shadowColor='#ff6b84';ctx.shadowBlur=10;ctx.fillStyle='#ff6b84';
+        /* food */
+        ctx.save();ctx.shadowColor='#e0e0ec';ctx.shadowBlur=12;ctx.fillStyle='#d0d0dc';
         ctx.beginPath();ctx.arc(food.x*G+G/2,food.y*G+G/2,G/2-2,0,Math.PI*2);ctx.fill();ctx.restore();
-        snake.forEach(function(cell,i){const alpha=1-(i/snake.length)*0.5;if(i===0){ctx.save();ctx.shadowColor='#FFB7C5';ctx.shadowBlur=8;ctx.fillStyle='#FFB7C5';ctx.fillRect(cell.x*G+1,cell.y*G+1,G-2,G-2);ctx.restore();}else{ctx.fillStyle='rgba(255,141,161,'+alpha+')';ctx.fillRect(cell.x*G+1,cell.y*G+1,G-2,G-2);}});
+        /* snake */
+        snake.forEach(function(cell,i){
+            var len=snake.length;
+            /* alpha floor of 0.35 so the tail is always clearly visible */
+            var alpha=1-(i/len)*0.65;
+            if(alpha<0.35)alpha=0.35;
+            if(i===0){
+                /* head: bright with glow */
+                ctx.save();ctx.shadowColor='rgba(210,210,225,0.6)';ctx.shadowBlur=10;
+                ctx.fillStyle='#e0e0ec';
+                ctx.fillRect(cell.x*G+1,cell.y*G+1,G-2,G-2);
+                ctx.restore();
+            } else {
+                /* body: silver with visible outline */
+                ctx.fillStyle='rgba(180,180,195,'+alpha+')';
+                ctx.fillRect(cell.x*G+1,cell.y*G+1,G-2,G-2);
+                /* subtle border so each segment is distinct */
+                ctx.strokeStyle='rgba(220,220,235,'+(alpha*0.5)+')';
+                ctx.lineWidth=0.5;
+                ctx.strokeRect(cell.x*G+1,cell.y*G+1,G-2,G-2);
+            }
+        });
     }
     function step(){
         if(!alive)return;const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
         if(head.x<0)head.x=COLS-1;else if(head.x>=COLS)head.x=0;
         if(head.y<0)head.y=ROWS-1;else if(head.y>=ROWS)head.y=0;
-        if(snake.some(s=>s.x===head.x&&s.y===head.y)){alive=false;setTimeout(()=>{snake=[{x:5,y:Math.floor(ROWS/2)}];dir={x:1,y:0};score=0;alive=true;food=newFood();document.getElementById('snake-score').textContent='🌸 0';},1500);return;}
+        if(snake.some(s=>s.x===head.x&&s.y===head.y)){alive=false;setTimeout(()=>{snake=[{x:5,y:Math.floor(ROWS/2)}];dir={x:1,y:0};score=0;alive=true;food=newFood();document.getElementById('snake-score').textContent='◆ 0';},1500);return;}
         snake.unshift(head);
-        if(head.x===food.x&&head.y===food.y){score++;document.getElementById('snake-score').textContent='🌸 '+score;food=newFood();}else{snake.pop();}
+        if(head.x===food.x&&head.y===food.y){score++;document.getElementById('snake-score').textContent='◆ '+score;food=newFood();}else{snake.pop();}
         draw();
     }
     document.addEventListener('keydown',function(e){
