@@ -195,8 +195,8 @@ else
 
     # ── I2V_NSFW-only nodes ──
     _install_node "ComfyUI-VFI"                     "https://github.com/GACLove/ComfyUI-VFI"
-    _install_node "ComfyUI-PainterI2V"              "https://github.com/LDNKS094/ComfyUI-PainterI2V"
-    _install_node "ComfyUI-VideoUpscaler"           "https://github.com/ShmuelRonen/ComfyUI-VideoUpscaler"
+    _install_node "ComfyUI-PainterI2V"              "https://github.com/LDNKS094/ComfyUI-Painter-I2V-AIO"
+    _install_node "ComfyUI-VideoUpscaler"           "https://github.com/ShmuelRonen/ComfyUI-VideoUpscale_WithModel"
 
     # ── Private ──
     _install_node "comfyui-closer-tool"             "https://github.com/st4vz/comfyui-closer-tool"
