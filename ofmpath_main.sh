@@ -356,15 +356,33 @@ function showToast(msg){
     setTimeout(()=>{toast.style.transform="translateX(120%)";setTimeout(()=>toast.remove(),300);},3000);
 }
 
-/* ── handoff detection ── */
-let handoffStarted=false;
+/* ── handoff detection (robust auto-refresh) ── */
+let handoffStarted=false, comfyReloading=false;
 setInterval(async()=>{try{const r=await fetch("ready?t="+Date.now());if(r.ok){const t=await r.text();if(t.trim()==="READY"&&!handoffStarted){handoffStarted=true;startHandoff();}}}catch(_){}},2000);
 function startHandoff(){
     document.getElementById("progress-bar").style.width="100%";
     document.getElementById("status-text").textContent="Starting ComfyUI...";
+    document.getElementById("status-line").textContent="▸ Waiting for ComfyUI process...";
     document.getElementById("download-speed").innerText="";
-    const ping=setInterval(async()=>{try{const r=await fetch("/?_t="+Date.now(),{cache:"no-store"});if(r.ok){const html=await r.text();if(html.includes("comfyui")||html.includes("litegraph")||html.includes("comfyui-body")||html.length>5000){clearInterval(ping);location.reload();}}}catch(_){}},1500);
-    setTimeout(()=>{document.getElementById("refresh-prompt").style.display="block";},20000);
+    /* poll multiple endpoints aggressively — first one that proves ComfyUI is live triggers reload */
+    const ping=setInterval(async()=>{
+        if(comfyReloading)return;
+        /* check 1: /system_stats is ComfyUI-only, never served by the preloader */
+        try{const r=await fetch("/system_stats?_t="+Date.now(),{cache:"no-store"});if(r.ok){doReload();return;}}catch(_){}
+        /* check 2: /api/system_stats (alternate ComfyUI route) */
+        try{const r=await fetch("/api/system_stats?_t="+Date.now(),{cache:"no-store"});if(r.ok){doReload();return;}}catch(_){}
+        /* check 3: root page — detect ComfyUI HTML or any large non-preloader page */
+        try{const r=await fetch("/?_t="+Date.now(),{cache:"no-store"});if(r.ok){const html=await r.text();if(!html.includes("OFMPATH — Initializing")&&(html.includes("comfyui")||html.includes("litegraph")||html.includes("comfyui-body")||html.length>5000)){doReload();return;}}}catch(_){}
+    },1000);
+    /* fallback manual button after 15s */
+    setTimeout(()=>{document.getElementById("refresh-prompt").style.display="block";},15000);
+}
+function doReload(){
+    if(comfyReloading)return;comfyReloading=true;
+    document.getElementById("status-text").textContent="ComfyUI ready";
+    document.getElementById("status-line").textContent="▸ Launching interface...";
+    /* small delay to let ComfyUI fully settle, then hard reload */
+    setTimeout(()=>{window.location.reload(true);},800);
 }
 
 /* ── log polling ── */
