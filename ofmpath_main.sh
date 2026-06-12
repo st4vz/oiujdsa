@@ -828,23 +828,23 @@ PATCH_TEMPLATE = """
   .crystools-root, .crystools-monitors-container,
   [class*="crystools"], [id*="crystools"] { display: none !important; visibility: hidden !important; }
   .pysssss-image-feed, button[title*="Image Feed"], button[aria-label*="Image Feed"] { display: none !important; }
-  .side-tool-bar-container button[aria-label*="model" i], .side-tool-bar-container button[aria-label*="node library" i],
+  .side-tool-bar-container button[aria-label*="node library" i],
   .side-tool-bar-container button[aria-label*="nodes" i]:not([aria-label*="workflow" i]),
   .side-tool-bar-container button[aria-label*="template" i], .side-tool-bar-container button[aria-label*="bookmark" i],
   .side-tool-bar-container button[aria-label*="apps" i], .side-tool-bar-container button[aria-label*="queue" i],
-  .side-tool-bar-container button[data-pc-name="model-library"], .side-tool-bar-container button[data-pc-name="node-library"],
+  .side-tool-bar-container button[data-pc-name="node-library"],
   .side-tool-bar-container button[data-pc-name="bookmarks"], .side-tool-bar-container button[data-pc-name="templates"],
   .side-tool-bar-container button[data-pc-name="apps"],
-  .comfyui-side-bar button[aria-label*="model" i], .comfyui-side-bar button[aria-label*="node library" i],
+  .comfyui-side-bar button[aria-label*="node library" i],
   .comfyui-side-bar button[aria-label*="template" i], .comfyui-side-bar button[aria-label*="bookmark" i],
-  .comfyui-side-bar button[aria-label*="apps" i], .comfyui-side-bar button[data-pc-name="model-library"],
+  .comfyui-side-bar button[aria-label*="apps" i],
   .comfyui-side-bar button[data-pc-name="node-library"], .comfyui-side-bar button[data-pc-name="bookmarks"],
   .comfyui-side-bar button[data-pc-name="templates"], .comfyui-side-bar button[data-pc-name="apps"],
-  [class*='side-bar'] button[aria-label*="model" i], [class*='side-bar'] button[aria-label*="node library" i],
+  [class*='side-bar'] button[aria-label*="node library" i],
   [class*='side-bar'] button[aria-label*="template" i],
   [class*='side-bar'] button[aria-label*="bookmark" i] { display: none !important; visibility: hidden !important; }
-  [class*="model-library"], [class*="node-library"], [class*="ModelLibrary"], [class*="NodeLibrary"],
-  [data-pc-name="model-library"], [data-pc-name="node-library"], [data-pc-name="templates"],
+  [class*="node-library"], [class*="NodeLibrary"],
+  [data-pc-name="node-library"], [data-pc-name="templates"],
   [data-pc-name="bookmarks"], [data-pc-name="apps"] { display: none !important; }
   .p-popover [aria-label="Rename" i], .p-popover [aria-label="Duplicate" i],
   .p-popover [aria-label="Add to Bookmarks" i], .p-popover [aria-label="Save" i],
@@ -867,8 +867,8 @@ PATCH_TEMPLATE = """
     if (e.ctrlKey && e.shiftKey && ["I","J","C","i","j","c"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
     if (e.ctrlKey && ["u","U","s","S","c","C","p","P","a","A","o","O","e","E"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
   }, true);
-  var killWords = ["rename","duplicate","add to bookmarks","save","save as","save workflow","export","export (api)","export workflow","export api","download","load","load default","import","clear workflow","delete workflow","delete","model library","node library","nodes library","model browser","node browser","models","nodes","assets","templates","node map","nodesmap","blueprints","subgraph blueprints","partner nodes","comfy nodes","manager","workspace manager","comfyui manager","experiments","share","unload models","unload model","free models","free model and node cache","free model","free node cache","free memory","free models and node cache","menu","properties","properties panel","add node","convert to subgraph","convert to group","clone","node help","add ue broadcasting","title","mode","resize","collapse","pin","unpin","colors","shapes","copy (clipspace)","copy clipspace","remove","help","console","settings","translate"];
-  var keepIfContains = ["workflow library","workflows","remove from bookmarks","reload node","reset","bypass","swap width","swap height","fix node","recreate","reject ue links","ue connectable","add getnode","add setnode","add previewastextnode","convert all outputs","open in sam"];
+  var killWords = ["rename","duplicate","add to bookmarks","save","save as","save workflow","export","export (api)","export workflow","export api","load","load default","import","clear workflow","delete workflow","delete","node library","nodes library","node browser","nodes","templates","node map","nodesmap","blueprints","subgraph blueprints","partner nodes","comfy nodes","manager","workspace manager","comfyui manager","experiments","share","unload models","unload model","free models","free model and node cache","free model","free node cache","free memory","free models and node cache","menu","properties","properties panel","add node","convert to subgraph","convert to group","clone","node help","add ue broadcasting","title","mode","resize","collapse","pin","unpin","colors","shapes","copy (clipspace)","copy clipspace","remove","help","console","settings","translate"];
+  var keepIfContains = ["workflow library","workflows","remove from bookmarks","reload node","reset","bypass","swap width","swap height","fix node","recreate","reject ue links","ue connectable","add getnode","add setnode","add previewastextnode","convert all outputs","open in sam","model library","download model","install model","browse model","model browser","media assets","assets","generated","imported"];
   var menuSelectors = ["header",".p-toolbar","[class*='topbar']","[class*='top-bar']",".litecontextmenu",".comfy-menu",".p-menubar",".p-menu",".p-panelmenu",".p-tieredmenu",".p-contextmenu",".p-popover",".p-popover-content",".p-overlaypanel",".p-overlaypanel-content",".p-sidebar",".p-sidebar-content",".side-tool-bar-container",".comfyui-side-bar","nav","aside","[class*='comfyui-menu']","[class*='sidebar']","[role='menu']","[role='listbox']"].join(", ");
   var innerSelectors = "li, a, button, div, span, .p-menuitem, .litemenu-entry, .p-button, [role='menuitem'], [role='option'], [role='button'], [role='tab']";
   function shouldHide(blob) {
@@ -906,7 +906,7 @@ PATCH_TEMPLATE = """
         var headers = panel.querySelectorAll("h1, h2, h3, h4, [class*='title'], [class*='header']");
         for (var h = 0; h < headers.length; h++) {
           var blob = (headers[h].innerText || headers[h].textContent || "").trim().toLowerCase();
-          if (blob === "nodes" || blob === "model library" || blob === "node library" || blob === "models" || blob === "models library" || blob === "nodes library" || blob === "templates" || blob === "node map" || blob === "bookmarks" || blob === "manager") { panel.style.display = "none"; break; }
+          if (blob === "nodes" || blob === "node library" || blob === "nodes library" || blob === "templates" || blob === "node map" || blob === "bookmarks" || blob === "manager") { panel.style.display = "none"; break; }
         }
       });
       document.querySelectorAll(".side-tool-bar-container button, .comfyui-side-bar button, [class*='side-bar'] button, [class*='sidebar'] button").forEach(function(btn) {
