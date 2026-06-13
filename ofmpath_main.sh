@@ -95,7 +95,8 @@ _start_preloader() {
         canvas#particles { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
 
         .container {
-            position: relative; z-index: 10; max-width: 580px; width: 90%; padding: 48px;
+            position: relative; z-index: 10; max-width: 560px; width: 90%; padding: 28px 38px;
+            max-height: 96vh;
             background: rgba(16, 16, 22, 0.7);
             border: 1px solid rgba(180, 180, 195, 0.12);
             border-radius: 20px;
@@ -108,13 +109,13 @@ _start_preloader() {
         @keyframes slideUp { to { transform: translateY(0); opacity: 1; } }
 
         .logo-icon {
-            width: 68px; height: 68px;
+            width: 50px; height: 50px;
             background: linear-gradient(145deg, #2a2a32, #18181e);
             border: 1px solid rgba(180,180,195,0.2);
-            border-radius: 18px; display: flex; align-items: center; justify-content: center;
-            font-size: 26px; font-weight: 700; color: #d0d0d8;
+            border-radius: 14px; display: flex; align-items: center; justify-content: center;
+            font-size: 20px; font-weight: 700; color: #d0d0d8;
             letter-spacing: 1px;
-            margin-bottom: 24px;
+            margin-bottom: 12px;
             box-shadow: 0 12px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
             animation: pulseIcon 4s infinite alternate ease-in-out;
             font-family: 'Chakra Petch', sans-serif;
@@ -126,9 +127,9 @@ _start_preloader() {
         }
 
         h1 {
-            font-size: 28px; font-weight: 700; letter-spacing: 3px;
+            font-size: 22px; font-weight: 700; letter-spacing: 3px;
             color: #e4e4ec;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             text-shadow: 0 2px 12px rgba(180,180,195,0.15);
         }
         .version-badge {
@@ -136,15 +137,15 @@ _start_preloader() {
             background: rgba(255,255,255,0.04);
             border: 1px solid rgba(180,180,195,0.12);
             padding: 4px 12px; border-radius: 20px;
-            letter-spacing: 2px; text-transform: uppercase; margin-bottom: 32px;
+            letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px;
             font-family: 'Share Tech Mono', monospace;
         }
         .status-badge {
-            display: inline-flex; align-items: center; gap: 10px; padding: 8px 18px;
+            display: inline-flex; align-items: center; gap: 10px; padding: 7px 16px;
             background: rgba(255,255,255,0.03);
             border: 1px solid rgba(180,180,195,0.1);
-            border-radius: 100px; font-size: 14px; font-weight: 500; color: #a0a0ac;
-            margin-bottom: 24px;
+            border-radius: 100px; font-size: 13px; font-weight: 500; color: #a0a0ac;
+            margin-bottom: 14px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
         .status-badge .dot {
@@ -155,7 +156,7 @@ _start_preloader() {
         }
         @keyframes dotPop { 0%,100% { transform: scale(0.8); opacity: 0.5; } 50% { transform: scale(1.3); opacity: 1; } }
 
-        .progress-container { width: 100%; margin-bottom: 30px; }
+        .progress-container { width: 100%; margin-bottom: 14px; }
         .progress-track {
             width: 100%; height: 5px;
             background: rgba(255,255,255,0.06);
@@ -177,7 +178,7 @@ _start_preloader() {
         @keyframes shimmer { 100% { transform: translateX(100%); } }
 
         .status-line {
-            font-size: 12px; color: #606070; margin-bottom: 20px; height: 20px;
+            font-size: 12px; color: #606070; margin-bottom: 14px; height: 18px;
             transition: all 0.3s ease;
             font-family: 'Share Tech Mono', monospace;
             letter-spacing: 0.5px;
@@ -187,8 +188,8 @@ _start_preloader() {
             width: 100%;
             background: rgba(255,255,255,0.02);
             border: 1px solid rgba(180,180,195,0.08);
-            border-radius: 14px; padding: 20px;
-            display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px;
+            border-radius: 14px; padding: 14px;
+            display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px;
         }
         .download-header {
             font-size: 11px; font-weight: 500; color: #808090;
@@ -197,7 +198,7 @@ _start_preloader() {
         }
         .blocks-grid { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-start; }
         .block {
-            width: 18px; height: 18px; border-radius: 3px;
+            width: 16px; height: 16px; border-radius: 3px;
             background: rgba(255,255,255,0.04);
             border: 1px solid rgba(180,180,195,0.08);
             transition: all 0.4s cubic-bezier(0.2,0.8,0.2,1);
@@ -218,7 +219,7 @@ _start_preloader() {
 
         .footer-text {
             font-size: 10px; color: rgba(180,180,195,0.2); letter-spacing: 3px;
-            text-transform: uppercase; margin-top: 10px;
+            text-transform: uppercase; margin-top: 8px;
             font-family: 'Share Tech Mono', monospace;
         }
 
@@ -227,33 +228,21 @@ _start_preloader() {
         .error-state .status-badge { background: rgba(200,40,60,0.08); border-color: rgba(200,40,60,0.3); color: #e05060; }
         .error-state .status-badge .dot { background: #e05060; box-shadow: 0 0 8px rgba(224,80,96,0.5); }
 
-        #refresh-prompt { display: none; margin-top: 20px; animation: fadeIn 0.5s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .btn {
-            background: linear-gradient(135deg, #8a8a96, #c0c0cc);
-            color: #0a0a0e; border: none; padding: 12px 32px;
-            border-radius: 100px; font-size: 14px; font-weight: 700; cursor: pointer;
-            font-family: 'Chakra Petch', sans-serif; letter-spacing: 1px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.4), 0 0 20px rgba(180,180,195,0.1);
-            transition: all 0.2s ease;
-        }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 25px rgba(0,0,0,0.5), 0 0 30px rgba(180,180,195,0.15); }
-
         /* ── snake game ── */
         .snake-wrapper {
-            margin-bottom: 16px; border-radius: 12px; overflow: hidden;
+            margin-bottom: 12px; border-radius: 12px; overflow: hidden;
             background: rgba(255,255,255,0.02);
             border: 1px solid rgba(180,180,195,0.08);
-            padding: 12px; text-align: center;
+            padding: 10px; text-align: center;
         }
         #snakeGame {
             background: rgba(0,0,0,0.3); border-radius: 8px;
             border: 1px solid rgba(180,180,195,0.06);
             display: block; margin: 0 auto; max-width: 100%;
         }
-        #snake-score { font-size: 12px; color: #b0b0bc; font-weight: 600; margin-top: 8px; font-family: 'Share Tech Mono', monospace; }
+        #snake-score { font-size: 11px; color: #b0b0bc; font-weight: 600; margin-top: 6px; font-family: 'Share Tech Mono', monospace; }
         .snake-hint {
-            font-size: 10px; color: rgba(180,180,195,0.25); margin-top: 4px;
+            font-size: 10px; color: rgba(180,180,195,0.25); margin-top: 3px;
             letter-spacing: 1px; text-transform: uppercase;
             font-family: 'Share Tech Mono', monospace;
         }
@@ -288,7 +277,7 @@ _start_preloader() {
         </div>
         <div class="status-line" id="status-line">Connecting to OFMPATH servers...</div>
         <div class="snake-wrapper">
-            <canvas id="snakeGame" width="520" height="300"></canvas>
+            <canvas id="snakeGame" width="440" height="150"></canvas>
             <div id="snake-score">◆ 0</div>
             <div class="snake-hint">← → ↑ ↓ control · awaiting deployment...</div>
         </div>
@@ -299,10 +288,6 @@ _start_preloader() {
             </div>
             <div class="blocks-grid" id="blocks-grid"></div>
             <div id="model-current" style="font-size: 10px; color: rgba(180,180,195,0.25); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'Share Tech Mono', monospace;">▸ Awaiting...</div>
-        </div>
-        <div id="refresh-prompt">
-            <p style="color:#c0c0cc; font-size:13px; margin-bottom:12px; font-weight:500;">Deployment complete</p>
-            <button class="btn" onclick="location.reload()">Launch Interface</button>
         </div>
         <div class="footer-text">SECURE DEPLOYMENT · OFM PATH</div>
     </div>
@@ -374,8 +359,6 @@ function startHandoff(){
         /* check 3: root page — detect ComfyUI HTML or any large non-preloader page */
         try{const r=await fetch("/?_t="+Date.now(),{cache:"no-store"});if(r.ok){const html=await r.text();if(!html.includes("OFMPATH — Initializing")&&(html.includes("comfyui")||html.includes("litegraph")||html.includes("comfyui-body")||html.length>5000)){doReload();return;}}}catch(_){}
     },1000);
-    /* fallback manual button after 15s */
-    setTimeout(()=>{document.getElementById("refresh-prompt").style.display="block";},15000);
 }
 function doReload(){
     if(comfyReloading)return;comfyReloading=true;
