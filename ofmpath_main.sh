@@ -799,6 +799,26 @@ PATCH_TEMPLATE = """
   [data-pr-tooltip*="Manager" i],
   [title*="Manager" i],
   [aria-label*="Manager" i] { display: none !important; }
+  /* ── OFMPATH: keep ONLY the model / LoRA / HuggingFace downloader visible.
+        html-body prefix bumps specificity above the manager-hide rules above so
+        these win on source order. ComfyUI (node) Manager stays hidden because
+        none of these terms match "ComfyUI Manager" / #cm-manager-btn. ── */
+  html body [id*="model-manager" i], html body [id*="modelmanager" i],
+  html body [class*="model-manager" i], html body [class*="modelmanager" i],
+  html body [aria-label*="Model Manager" i], html body [title*="Model Manager" i], html body [data-pr-tooltip*="Model Manager" i],
+  html body [aria-label*="huggingface" i], html body [title*="huggingface" i], html body [data-pr-tooltip*="huggingface" i],
+  html body [aria-label*="hugging face" i], html body [title*="hugging face" i], html body [data-pr-tooltip*="hugging face" i],
+  html body [aria-label*="download model" i], html body [aria-label*="model download" i], html body [aria-label*="model downloader" i],
+  html body [aria-label*="install model" i],
+  html body [aria-label*="download lora" i], html body [aria-label*="lora download" i],
+  html body [data-pr-tooltip*="download model" i], html body [data-pr-tooltip*="model download" i],
+  html body [title*="download model" i], html body [title*="model download" i],
+  html body [aria-label*="🤗"], html body [title*="🤗"], html body [data-pr-tooltip*="🤗"],
+  html body [aria-label*="模型管理"], html body [title*="模型管理"], html body [data-pr-tooltip*="模型管理"],
+  html body [aria-label*="模型下载"], html body [title*="模型下载"], html body [data-pr-tooltip*="模型下载"],
+  html body [aria-label*="抱抱脸"], html body [title*="抱抱脸"], html body [data-pr-tooltip*="抱抱脸"] {
+      display: revert !important; visibility: visible !important;
+  }
   button[aria-label*="Unload" i], button[aria-label*="Free Models" i], button[aria-label*="Free Model" i],
   button[aria-label*="Free Cache" i], button[aria-label*="Free Memory" i],
   button[aria-label*="Free model and node cache" i], button[aria-label*="Free node cache" i],
@@ -826,6 +846,15 @@ PATCH_TEMPLATE = """
   [class*='side-bar'] button[aria-label*="node library" i],
   [class*='side-bar'] button[aria-label*="template" i],
   [class*='side-bar'] button[aria-label*="bookmark" i] { display: none !important; visibility: hidden !important; }
+  /* ── OFMPATH: hide the native Model Library sidebar tab + panel (keeps 🤗 HF downloader, which is a separate element) ── */
+  button[aria-label*="Model Library" i], a[aria-label*="Model Library" i],
+  [data-pr-tooltip*="Model Library" i], [title*="Model Library" i],
+  button[data-pc-name="model-library"], button[data-pc-name="modelLibrary"], button[data-pc-name="model-models"],
+  .side-tool-bar-container button[aria-label*="model library" i],
+  .comfyui-side-bar button[aria-label*="model library" i],
+  [class*='side-bar'] button[aria-label*="model library" i],
+  [class*="model-library" i], [class*="ModelLibrary" i],
+  [data-pc-name="model-library"], [data-pc-name="modelLibrary"] { display: none !important; visibility: hidden !important; }
   [class*="node-library"], [class*="NodeLibrary"],
   [data-pc-name="node-library"], [data-pc-name="templates"],
   [data-pc-name="bookmarks"], [data-pc-name="apps"] { display: none !important; }
@@ -850,11 +879,36 @@ PATCH_TEMPLATE = """
     if (e.ctrlKey && e.shiftKey && ["I","J","C","i","j","c"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
     if (e.ctrlKey && ["u","U","s","S","c","C","p","P","a","A","o","O","e","E"].indexOf(e.key) !== -1) { e.preventDefault(); e.stopPropagation(); }
   }, true);
-  var killWords = ["rename","duplicate","add to bookmarks","save","save as","save workflow","export","export (api)","export workflow","export api","load","load default","import","clear workflow","delete workflow","delete","node library","nodes library","node browser","nodes","templates","node map","nodesmap","blueprints","subgraph blueprints","partner nodes","comfy nodes","manager","workspace manager","comfyui manager","experiments","share","unload models","unload model","free models","free model and node cache","free model","free node cache","free memory","free models and node cache","menu","properties","properties panel","add node","convert to subgraph","convert to group","clone","node help","add ue broadcasting","title","mode","resize","collapse","pin","unpin","colors","shapes","copy (clipspace)","copy clipspace","remove","help","console","settings","translate"];
-  var keepIfContains = ["workflow library","workflows","remove from bookmarks","reload node","reset","bypass","swap width","swap height","fix node","recreate","reject ue links","ue connectable","add getnode","add setnode","add previewastextnode","convert all outputs","open in sam","model library","download model","install model","browse model","model browser","media assets","assets","generated","imported"];
+  var killWords = ["rename","duplicate","add to bookmarks","save","save as","save workflow","export","export (api)","export workflow","export api","load","load default","import","clear workflow","delete workflow","delete","node library","nodes library","node browser","nodes","templates","node map","nodesmap","blueprints","subgraph blueprints","partner nodes","comfy nodes","manager","workspace manager","comfyui manager","experiments","share","unload models","unload model","free models","free model and node cache","free model","free node cache","free memory","free models and node cache","menu","properties","properties panel","add node","convert to subgraph","convert to group","clone","node help","add ue broadcasting","title","mode","resize","collapse","pin","unpin","colors","shapes","copy (clipspace)","copy clipspace","remove","help","console","settings","translate","model library","models library"];
+  var keepIfContains = ["workflow library","workflows","remove from bookmarks","reload node","reset","bypass","swap width","swap height","fix node","recreate","reject ue links","ue connectable","add getnode","add setnode","add previewastextnode","convert all outputs","open in sam","download model","install model","browse model","model browser","media assets","assets","generated","imported"];
+  /* OFMPATH: terms that identify the user-facing model/LoRA/HF downloader — always kept.
+     Note: deliberately NOT "comfyui manager"/"cm-manager" so the node Manager stays hidden. */
+  var keepModelTools = ["model manager","model-manager","modelmanager","huggingface","hugging face","hf downloader","hf model","download model","model download","model downloader","install model","download lora","lora download","🤗","抱抱脸","模型管理","模型下载","下载模型","模型下载器"];
+  function isProtected(blob) { for (var p = 0; p < keepModelTools.length; p++) { if (blob.indexOf(keepModelTools[p]) !== -1) return true; } return false; }
+  // OFMPATH: force the model/LoRA/HF downloader button visible even against CSS !important hides
+  // (inline !important wins) and clear any inline display:none on its ancestors.
+  function forceShowModelTools() {
+    try {
+      document.querySelectorAll("button, a, [role='tab'], [role='button'], [role='menuitem']").forEach(function(el) {
+        var blob = elementBlob(el);
+        if (!isProtected(blob)) return;
+        el.style.setProperty("display", "revert", "important");
+        el.style.setProperty("visibility", "visible", "important");
+        el.style.setProperty("opacity", "1", "important");
+        el.style.setProperty("pointer-events", "auto", "important");
+        var node = el.parentElement, hops = 0;
+        while (node && hops < 8) {
+          if (node.style && node.style.display === "none") node.style.setProperty("display", "revert", "important");
+          if (node.style && node.style.visibility === "hidden") node.style.setProperty("visibility", "visible", "important");
+          node = node.parentElement; hops++;
+        }
+      });
+    } catch (e) {}
+  }
   var menuSelectors = ["header",".p-toolbar","[class*='topbar']","[class*='top-bar']",".litecontextmenu",".comfy-menu",".p-menubar",".p-menu",".p-panelmenu",".p-tieredmenu",".p-contextmenu",".p-popover",".p-popover-content",".p-overlaypanel",".p-overlaypanel-content",".p-sidebar",".p-sidebar-content",".side-tool-bar-container",".comfyui-side-bar","nav","aside","[class*='comfyui-menu']","[class*='sidebar']","[role='menu']","[role='listbox']"].join(", ");
   var innerSelectors = "li, a, button, div, span, .p-menuitem, .litemenu-entry, .p-button, [role='menuitem'], [role='option'], [role='button'], [role='tab']";
   function shouldHide(blob) {
+    if (isProtected(blob)) return false;
     for (var k = 0; k < keepIfContains.length; k++) { if (blob.indexOf(keepIfContains[k]) !== -1) return false; }
     for (var i = 0; i < killWords.length; i++) {
       var w = killWords[i];
@@ -889,7 +943,7 @@ PATCH_TEMPLATE = """
         var headers = panel.querySelectorAll("h1, h2, h3, h4, [class*='title'], [class*='header']");
         for (var h = 0; h < headers.length; h++) {
           var blob = (headers[h].innerText || headers[h].textContent || "").trim().toLowerCase();
-          if (blob === "nodes" || blob === "node library" || blob === "nodes library" || blob === "templates" || blob === "node map" || blob === "bookmarks" || blob === "manager") { panel.style.display = "none"; break; }
+          if (blob === "nodes" || blob === "node library" || blob === "nodes library" || blob === "templates" || blob === "node map" || blob === "bookmarks" || blob === "manager" || blob === "model library" || blob === "models library") { panel.style.display = "none"; break; }
         }
       });
       document.querySelectorAll(".side-tool-bar-container button, .comfyui-side-bar button, [class*='side-bar'] button, [class*='sidebar'] button").forEach(function(btn) {
@@ -897,8 +951,10 @@ PATCH_TEMPLATE = """
       });
       document.querySelectorAll("button, a").forEach(function(el) {
         var blob = elementBlob(el);
+        if (isProtected(blob)) return;
         if (blob.indexOf("manager") !== -1 || blob.indexOf("crystools") !== -1) hideAndAncestor(el);
       });
+      forceShowModelTools();
     } catch (e) {}
   }
   function startObserver() {
